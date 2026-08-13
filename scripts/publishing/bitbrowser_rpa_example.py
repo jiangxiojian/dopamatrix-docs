@@ -61,6 +61,7 @@ DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
 DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
+TAB_MODES = ("new", "reuse-first")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
 SUMMARY_FIELDS = [
     "publish_id",
@@ -779,7 +780,7 @@ def resolve_account_ledger_for_task(
     return resolve_account_ledger(media_path, explicit_csv)
 
 
-def connect_page(cdp_url: str):
+def connect_page(cdp_url: str, tab_mode: str = "new"):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -791,7 +792,12 @@ def connect_page(cdp_url: str):
     pw = sync_playwright().start()
     browser = pw.chromium.connect_over_cdp(cdp_url)
     context = browser.contexts[0] if browser.contexts else browser.new_context()
-    page = context.pages[0] if context.pages else context.new_page()
+    if tab_mode == "reuse-first":
+        page = context.pages[0] if context.pages else context.new_page()
+    elif tab_mode == "new":
+        page = context.new_page()
+    else:
+        raise BitBrowserError(f"Unsupported tab mode: {tab_mode}")
     return pw, browser, page
 
 
@@ -830,15 +836,25 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
         "button:has-text('添加照片/视频')",
         "div[role='button']:has-text('添加照片/视频')",
         "span:has-text('添加照片/视频')",
+        "[role='button']:has-text('添加照片')",
+        "button:has-text('添加照片')",
+        "div[role='button']:has-text('添加照片')",
+        "span:has-text('添加照片')",
+        "text=/添加照片/",
         "[aria-label*='添加照片' i]",
         "[aria-label*='照片' i]",
         "[role='button']:has-text('Add photo/video')",
         "button:has-text('Add photo/video')",
         "div[role='button']:has-text('Add photo/video')",
         "span:has-text('Add photo/video')",
+        "[role='button']:has-text('Photo/video')",
+        "button:has-text('Photo/video')",
+        "div[role='button']:has-text('Photo/video')",
+        "span:has-text('Photo/video')",
         "[aria-label*='Add photo' i]",
         "[aria-label*='photo' i]",
         "text=/Add photo\\/video/i",
+        "text=/Photo\\/video/i",
         "text=/添加照片\\/视频/",
     ]
     for selector in selectors:
@@ -851,7 +867,13 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
             chooser_info.value.set_files(str(media_path))
             return True
         except Exception:
-            continue
+            try:
+                locator.first.click(timeout=5000)
+                page.wait_for_timeout(1500)
+                if set_first_file_input(page, media_path, min(timeout_ms, 5000)):
+                    return True
+            except Exception:
+                continue
     return False
 
 
@@ -1207,6 +1229,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         "attribution_token": getattr(args, "attribution_token", ""),
         "scheduled_at": getattr(args, "scheduled_at", ""),
         "content_check_action": content_check_action,
+        "tab_mode": getattr(args, "tab_mode", "new"),
         "screenshot": str(screenshot_path),
     }
     if getattr(args, "plan_csv_path", None):
@@ -1228,7 +1251,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     browser = None
     page = None
     try:
-        pw, browser, page = connect_page(opened.cdp_url)
+        pw, browser, page = connect_page(opened.cdp_url, args.tab_mode)
         if args.platform == "tiktok":
             result = publish_tiktok(
                 page,
@@ -1308,7 +1331,16 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 
 def run_plan(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan_csv).expanduser().resolve()
-    entries = [entry for entry in load_publish_plan(plan_path) if entry.is_ready()]
+    allowed_statuses = {
+        item.strip().upper()
+        for item in (args.include_status or "READY").split(",")
+        if item.strip()
+    }
+    entries = [
+        entry
+        for entry in load_publish_plan(plan_path)
+        if (entry.status.strip().upper() if entry.status else "READY") in allowed_statuses
+    ]
     if args.only_publish_id:
         wanted = {item.strip() for item in args.only_publish_id.split(",") if item.strip()}
         entries = [entry for entry in entries if entry.publish_id in wanted]
@@ -1317,10 +1349,12 @@ def run_plan(args: argparse.Namespace) -> int:
     if args.limit is not None:
         entries = entries[: args.limit]
     if not entries:
-        raise SystemExit(f"No READY publish plan rows found: {plan_path}")
+        raise SystemExit(
+            f"No publish plan rows found for statuses {sorted(allowed_statuses)}: {plan_path}"
+        )
 
     print(f"Publish plan: {plan_path}")
-    print(f"Ready rows selected: {len(entries)}")
+    print(f"Rows selected: {len(entries)}")
 
     exit_code = 0
     for index, entry in enumerate(entries, start=1):
@@ -1530,6 +1564,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Continue with later plan rows after one row fails.",
     )
     parser.add_argument(
+        "--include-status",
+        default="READY",
+        help=(
+            "Comma-separated plan row statuses to execute in plan mode. "
+            "Default: READY. Use READY,PARTIAL to retry partial rows."
+        ),
+    )
+    parser.add_argument(
         "--write-plan-status",
         action="store_true",
         help=(
@@ -1558,6 +1600,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "What to do when TikTok asks to turn on automatic content checks. "
             "Default pauses because this is an account-level setting."
+        ),
+    )
+    parser.add_argument(
+        "--tab-mode",
+        choices=TAB_MODES,
+        default="new",
+        help=(
+            "Which browser tab to use after connecting over CDP. Default: new, so "
+            "each publishing task opens a fresh tab and does not overwrite an existing draft. "
+            "Use reuse-first only for legacy debugging."
         ),
     )
     parser.add_argument(

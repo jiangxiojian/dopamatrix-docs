@@ -131,6 +131,18 @@ publish_id,client_id,product_id,platform,content_type,account_key,browser_profil
 
 脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析，所以计划表建议放在投放包目录内；如果复制到别的目录测试，`media_path` 最好改成绝对路径。账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。
 
+脚本默认使用 `--tab-mode new`，每条发布任务都会在同一个比特浏览器环境里新开一个 Tab，再进入对应平台页面。这个默认值很重要：如果同一个窗口同时登录 TK 和 FB，连续跑计划表时不能复用第一个已有 Tab，否则后一条 FB 任务可能把前一条 TK 草稿页 `goto` 覆盖掉。旧行为只保留给调试：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --only-publish-id PUB-SEQUENCE-TK-001,PUB-SEQUENCE-FB-001 `
+  --tab-mode new `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+```
+
+只有在明确想复用第一个 Tab 做兼容性排查时，才临时传 `--tab-mode reuse-first`。
+
 如果不带 `--print-plan`，脚本会按计划表顺序执行。建议实测时先加 `--limit 1`，并写入 JSONL 汇总日志：
 
 ```powershell
@@ -233,6 +245,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
 - 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接，以及导出 `publish_summary.csv`。
+- 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
 - 没有自动读取发布后的 post URL。
@@ -261,11 +274,12 @@ post_url 自动识别
 | TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 曾写回 `PREPARED`，后因测试草稿不发布已人工回填为 `REJECTED_MANUAL` |
 | TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
 | Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证两次：单条命令和 `publish_plan.csv` 计划模式均可通过文件选择器自动上传图片、填文案、截图，停在发布前 |
+| TK + FB 同窗口顺序执行是否会串 Tab | 2026-08-13 发现旧脚本会复用已有 Tab，导致 FB 页面覆盖 TK 草稿；已改为默认每条任务新开 Tab，待重新实机复测 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
 
-1. 用同一窗口按计划表顺序跑 TK + FB 各 1 条，确认跨平台顺序执行不串状态。
+1. 用同一窗口按计划表顺序跑 TK + FB 各 1 条，使用默认 `--tab-mode new` 重新确认跨平台顺序执行不串状态。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
 4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。

@@ -13,12 +13,14 @@
 - RPA 示例脚本新增 `--backfill-publish-id`、`--backfill-status`、`--post-url` 等人工回填参数，人工发布或拒绝后可把帖子链接、发布时间和备注写回计划表并追加 JSONL。
 - RPA 示例脚本新增 `--summarize-log-jsonl`、`--summary-csv` 和 `--summary-include-history`，可把 `publish_logs.jsonl` 导出为运营可读的 `publish_summary.csv`。
 - RPA 示例脚本新增基础异常分类，失败和部分成功会写入稳定 `error_type`，便于运营判断重试、换号或人工处理。
+- RPA 示例脚本新增 `--tab-mode new|reuse-first`，默认每条任务新开 Tab，避免同一比特窗口里 TK/FB 顺序任务互相覆盖草稿。
 
 ### Changed
 
 - Facebook Page 图片帖已完成 `publish_plan.csv` 计划模式真实执行验证：自动上传图片、填文案、截图并写入 `publish_logs.jsonl`，仍停在最终发布前。
 - TikTok 视频已完成 `publish_plan.csv` 计划模式真实执行验证：`PUB-TK-TEST-001` 自动上传视频、填文案、截图、追加 `publish_logs.jsonl`，先通过 `--write-plan-status` 写回 `PREPARED`，后按“不发布”决定人工回填为 `REJECTED_MANUAL`。
 - [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md)、[10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) 和 [TODO.md](./TODO.md) 已同步当前 RPA 状态：批量队列、JSONL、发布汇总 CSV、计划表状态回写、人工回填和基础异常分类均已完成；TK/FB 同窗口顺序执行和多样本彩排仍待实机验证。
+- 记录 2026-08-13 TK/FB 同窗口顺序彩排问题：旧脚本复用已有 Tab，导致 FB composer 覆盖 TK 草稿；脚本已改为默认 Tab 隔离，等待重新实机复测。
 
 ### Verified
 
