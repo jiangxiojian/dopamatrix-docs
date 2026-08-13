@@ -15,6 +15,7 @@
 - RPA 示例脚本新增基础异常分类，失败和部分成功会写入稳定 `error_type`，便于运营判断重试、换号或人工处理。
 - RPA 示例脚本新增 `--tab-mode new|reuse-first`，默认每条任务新开 Tab，避免同一比特窗口里 TK/FB 顺序任务互相覆盖草稿。
 - RPA 示例脚本新增 `--trace-tabs`、`--stop-after-connect` 和 `--close-task-tab`，用于诊断同一指纹窗口内多个 Tab 的隔离情况。
+- RPA 示例脚本新增 `--facebook-upload-mode input-only|auto|file-chooser`，默认不裸点上传按钮；同时新增 `--clean-blank-tabs` 清理测试产生的 `about:blank`。
 
 ### Changed
 
@@ -32,6 +33,9 @@
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 验证 Tab 隔离：关闭窗口后由脚本重新打开、窗口已打开后再次执行，均会保留原有 Tab 并新建任务 Tab。
 - 使用默认 `--tab-mode new` 验证 TikTok 冷启动完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png`；脚本未点击发布。
 - 使用默认 `--tab-mode new` 验证 Facebook 已打开窗口完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png`；脚本未点击发布。
+- 验证 Facebook `input-only` 模式不会弹出原生文件管理器，但当前页面不暴露可直接设置的 file input，因此返回 `UPLOAD_NOT_CONFIRMED`。
+- 验证 Facebook `auto` 模式通过 Playwright 受控 file chooser 上传成功，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-185116.png`；脚本未点击发布。
+- 使用 `--clean-blank-tabs` 清理目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 中测试产生的 1 个 `about:blank` Tab。
 
 ## 2026-07-27
 

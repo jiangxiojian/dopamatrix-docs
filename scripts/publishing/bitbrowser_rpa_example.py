@@ -63,6 +63,7 @@ DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
+FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
 SUMMARY_FIELDS = [
     "publish_id",
@@ -810,7 +811,7 @@ def resolve_account_ledger_for_task(
     return resolve_account_ledger(media_path, explicit_csv)
 
 
-def connect_page(cdp_url: str, tab_mode: str = "new", trace_tabs: bool = False):
+def connect_browser_context(cdp_url: str):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -822,6 +823,11 @@ def connect_page(cdp_url: str, tab_mode: str = "new", trace_tabs: bool = False):
     pw = sync_playwright().start()
     browser = pw.chromium.connect_over_cdp(cdp_url)
     context = browser.contexts[0] if browser.contexts else browser.new_context()
+    return pw, browser, context
+
+
+def connect_page(cdp_url: str, tab_mode: str = "new", trace_tabs: bool = False):
+    pw, browser, context = connect_browser_context(cdp_url)
     trace: dict[str, Any] = {"tab_mode": tab_mode}
     if trace_tabs:
         trace["before"] = snapshot_tabs(context)
@@ -844,6 +850,23 @@ def close_page_best_effort(page: Any | None) -> None:
         page.close()
     except Exception:
         pass
+
+
+def close_blank_tabs(context: Any, keep_one_blank: bool = False) -> list[dict[str, Any]]:
+    closed: list[dict[str, Any]] = []
+    blank_pages = [page for page in context.pages if sanitize_tab_url(page.url) == "about:blank"]
+    if keep_one_blank and blank_pages:
+        blank_pages = blank_pages[1:]
+    for page in blank_pages:
+        before_close = snapshot_tabs(context, page)
+        close_page_best_effort(page)
+        closed.append(
+            {
+                "url": "about:blank",
+                "before_close": before_close,
+            }
+        )
+    return closed
 
 
 def set_first_file_input(page, media_path: Path, timeout_ms: int = DEFAULT_UPLOAD_WAIT_MS) -> bool:
@@ -912,13 +935,7 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
             chooser_info.value.set_files(str(media_path))
             return True
         except Exception:
-            try:
-                locator.first.click(timeout=5000)
-                page.wait_for_timeout(1500)
-                if set_first_file_input(page, media_path, min(timeout_ms, 5000)):
-                    return True
-            except Exception:
-                continue
+            continue
     return False
 
 
@@ -1037,14 +1054,19 @@ def publish_facebook(
     media_path: Path,
     caption: str,
     upload_wait_ms: int = DEFAULT_UPLOAD_WAIT_MS,
+    upload_mode: str = "input-only",
 ) -> dict[str, Any]:
     page.goto(DEFAULT_FACEBOOK_COMPOSER_URL, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(5000)
 
     dismissed_popups = dismiss_safe_popups(page)
-    uploaded = set_first_file_input(page, media_path, min(upload_wait_ms, 3000))
+    uploaded = False
+    direct_input_attempted = upload_mode in {"auto", "input-only"}
+    file_chooser_attempted = upload_mode in {"auto", "file-chooser"}
+    if direct_input_attempted:
+        uploaded = set_first_file_input(page, media_path, min(upload_wait_ms, 10_000))
     used_file_chooser = False
-    if not uploaded:
+    if not uploaded and file_chooser_attempted:
         uploaded = upload_via_facebook_media_button(page, media_path, upload_wait_ms)
         used_file_chooser = uploaded
     if uploaded:
@@ -1056,6 +1078,9 @@ def publish_facebook(
         "url": page.url,
         "uploaded": uploaded,
         "caption_filled": caption_filled,
+        "upload_mode": upload_mode,
+        "direct_input_attempted": direct_input_attempted,
+        "file_chooser_attempted": file_chooser_attempted,
         "used_file_chooser": used_file_chooser,
         "dismissed_popups": dismissed_popups,
         "checkpoint": "请人工检查 Page 是否正确、图片/文案预览、发布或排期设置，然后手动点击发布。",
@@ -1349,7 +1374,13 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
                 content_check_action,
             )
         elif args.platform == "facebook":
-            result = publish_facebook(page, media_path, caption, args.upload_wait_ms)
+            result = publish_facebook(
+                page,
+                media_path,
+                caption,
+                args.upload_wait_ms,
+                args.facebook_upload_mode,
+            )
         else:
             raise SystemExit(f"Unsupported platform: {args.platform}")
 
@@ -1571,6 +1602,9 @@ def run(args: argparse.Namespace) -> int:
     if args.backfill_publish_id:
         backfill_manual_publish(args)
         return 0
+    if args.clean_blank_tabs:
+        clean_blank_tabs(args)
+        return 0
     if args.plan_csv:
         return run_plan(args)
     if not args.platform:
@@ -1623,6 +1657,54 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
 
     print("Manual publish backfilled:", json.dumps(updated, ensure_ascii=False))
+
+
+def clean_blank_tabs(args: argparse.Namespace) -> None:
+    profile_id = args.profile_id
+    if not profile_id and args.account_key:
+        ledger_path = Path(args.account_ledger).expanduser().resolve() if args.account_ledger else None
+        if ledger_path is not None:
+            account_entry = select_account_entry(
+                load_account_ledger(ledger_path),
+                args.platform or "",
+                account_key=args.account_key,
+            )
+            if account_entry is not None:
+                profile_id = account_entry.profile_id
+    if not profile_id:
+        raise SystemExit("--profile-id is required for --clean-blank-tabs unless resolved from --account-ledger and --account-key.")
+
+    bit = BitBrowserClient(args.bit_api)
+    health = bit.health()
+    opened = bit.open_profile(profile_id)
+    pw = None
+    browser = None
+    try:
+        pw, browser, context = connect_browser_context(opened.cdp_url)
+        before = snapshot_tabs(context)
+        closed = close_blank_tabs(context, keep_one_blank=args.keep_one_blank_tab)
+        after = snapshot_tabs(context)
+        payload = {
+            "action": "clean_blank_tabs",
+            "profile_id": profile_id,
+            "health": health,
+            "opened_profile": {
+                "profile_id": opened.profile_id,
+                "cdp_source": opened.cdp_source,
+            },
+            "before": before,
+            "closed_count": len(closed),
+            "after": after,
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        if args.log_json:
+            write_json_log(Path(args.log_json).expanduser().resolve(), payload)
+        if args.log_jsonl:
+            append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+    finally:
+        if pw is not None:
+            pw.stop()
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1696,6 +1778,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="How long to wait for the platform file input after opening composer",
     )
     parser.add_argument(
+        "--facebook-upload-mode",
+        choices=FACEBOOK_UPLOAD_MODES,
+        default="input-only",
+        help=(
+            "Facebook upload strategy. Default: input-only, which never opens a native "
+            "file chooser. auto tries input first, then a Playwright-controlled file chooser."
+        ),
+    )
+    parser.add_argument(
         "--content-check-action",
         choices=CONTENT_CHECK_ACTIONS,
         default=None,
@@ -1728,6 +1819,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--close-task-tab",
         action="store_true",
         help="Close only the task tab after the run. The BitBrowser profile remains open unless --close-profile is also set.",
+    )
+    parser.add_argument(
+        "--clean-blank-tabs",
+        action="store_true",
+        help="Open/connect the profile and close about:blank tabs. Does not run a publish task.",
+    )
+    parser.add_argument(
+        "--keep-one-blank-tab",
+        action="store_true",
+        help="With --clean-blank-tabs, leave one about:blank tab open.",
     )
     parser.add_argument(
         "--dry-run",
