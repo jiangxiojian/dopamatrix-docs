@@ -15,7 +15,8 @@
 - RPA 示例脚本新增基础异常分类，失败和部分成功会写入稳定 `error_type`，便于运营判断重试、换号或人工处理。
 - RPA 示例脚本新增 `--tab-mode new|reuse-first`，默认每条任务新开 Tab，避免同一比特窗口里 TK/FB 顺序任务互相覆盖草稿。
 - RPA 示例脚本新增 `--trace-tabs`、`--stop-after-connect` 和 `--close-task-tab`，用于诊断同一指纹窗口内多个 Tab 的隔离情况。
-- RPA 示例脚本新增 `--facebook-upload-mode input-only|auto|file-chooser`，默认不裸点上传按钮；同时新增 `--clean-blank-tabs` 清理测试产生的 `about:blank`。
+- RPA 示例脚本新增 `--facebook-upload-mode input-only|auto|file-chooser`，默认使用 `auto`；同时新增 `--clean-blank-tabs` 清理测试产生的 `about:blank`。
+- RPA 示例脚本新增一键运行模式：直接运行脚本或双击 `run_publisher.cmd`，自动发现 READY 计划、读取台账、写日志/状态并停在人工发布前。
 
 ### Changed
 
@@ -36,6 +37,8 @@
 - 验证 Facebook `input-only` 模式不会弹出原生文件管理器，但当前页面不暴露可直接设置的 file input，因此返回 `UPLOAD_NOT_CONFIRMED`。
 - 验证 Facebook `auto` 模式通过 Playwright 受控 file chooser 上传成功，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-185116.png`；脚本未点击发布。
 - 使用 `--clean-blank-tabs` 清理目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 中测试产生的 1 个 `about:blank` Tab。
+- 多轮验证 Facebook 上传策略：`auto` 窗口已打开连续 3 次、冷启动 1 次、零上传参数 1 次均完成上传和文案填充；`file-chooser` 直连连续 3 次也成功，但默认采用兼容性更好的 `auto`。
+- 直接无参数运行脚本验证一键模式：自动发现临时 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，未点击最终发布。
 
 ## 2026-07-27
 

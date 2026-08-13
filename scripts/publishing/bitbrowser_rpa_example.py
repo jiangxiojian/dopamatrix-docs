@@ -61,6 +61,7 @@ DEFAULT_UPLOAD_WAIT_MS = 60_000
 DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
 DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
+DEFAULT_PLAN_FILENAME = "publish_plan.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
 FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
@@ -149,6 +150,90 @@ PLAN_STATUS_COLUMNS = {
 
 class BitBrowserError(RuntimeError):
     pass
+
+
+def project_root() -> Path:
+    script_path = Path(__file__).resolve()
+    try:
+        return script_path.parents[3]
+    except IndexError:
+        return Path.cwd().resolve()
+
+
+def discover_publish_plan() -> Path:
+    roots: list[Path] = []
+    for root in (Path.cwd().resolve(), project_root()):
+        if root not in roots:
+            roots.append(root)
+
+    candidates: list[Path] = []
+    ignored_parts = {".git", "node_modules", "__pycache__"}
+    for root in roots:
+        if root.is_file() and root.name == DEFAULT_PLAN_FILENAME:
+            candidates.append(root)
+            continue
+        if not root.is_dir():
+            continue
+        for path in root.rglob(DEFAULT_PLAN_FILENAME):
+            if ignored_parts.intersection(path.parts):
+                continue
+            if path.is_file():
+                resolved = path.resolve()
+                if resolved not in candidates:
+                    candidates.append(resolved)
+
+    ready_candidates: list[tuple[Path, int]] = []
+    for candidate in candidates:
+        try:
+            ready_count = sum(1 for entry in load_publish_plan(candidate) if entry.is_ready())
+        except (OSError, BitBrowserError, UnicodeError):
+            continue
+        if ready_count:
+            ready_candidates.append((candidate, ready_count))
+
+    if len(ready_candidates) == 1:
+        return ready_candidates[0][0]
+    if not ready_candidates:
+        searched = "\n".join(f"  - {path}" for path in candidates) or "  (none)"
+        raise SystemExit(
+            "One-click mode could not find a publish_plan.csv with READY rows.\n"
+            f"Searched:\n{searched}"
+        )
+
+    details = "\n".join(
+        f"  - {path} ({ready_count} READY rows)"
+        for path, ready_count in ready_candidates
+    )
+    raise SystemExit(
+        "One-click mode found multiple publish_plan.csv files with READY rows. "
+        "Keep one active plan in the project or pass --plan-csv explicitly.\n"
+        f"Candidates:\n{details}"
+    )
+
+
+def configure_one_click(args: argparse.Namespace) -> argparse.Namespace:
+    if args.plan_csv:
+        plan_path = Path(args.plan_csv).expanduser().resolve()
+    else:
+        plan_path = discover_publish_plan()
+
+    args.plan_csv = str(plan_path)
+    args.include_status = "READY"
+    args.continue_on_error = True
+    args.write_plan_status = True
+    args.tab_mode = "new"
+    args.facebook_upload_mode = "auto"
+    args.close_task_tab = False
+    args.trace_tabs = False
+    args.stop_after_connect = False
+    args.clean_blank_tabs = False
+    if not args.log_jsonl:
+        args.log_jsonl = str(project_root() / DEFAULT_LOG_JSONL)
+
+    print("One-click prepare mode")
+    print(f"Plan: {plan_path}")
+    print("Safety: final Publish/Post buttons will not be clicked.")
+    return args
 
 
 @dataclass
@@ -1054,7 +1139,7 @@ def publish_facebook(
     media_path: Path,
     caption: str,
     upload_wait_ms: int = DEFAULT_UPLOAD_WAIT_MS,
-    upload_mode: str = "input-only",
+    upload_mode: str = "auto",
 ) -> dict[str, Any]:
     page.goto(DEFAULT_FACEBOOK_COMPOSER_URL, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(5000)
@@ -1709,6 +1794,14 @@ def clean_blank_tabs(args: argparse.Namespace) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="BitBrowser assisted publishing demo")
+    parser.add_argument(
+        "--one-click",
+        action="store_true",
+        help=(
+            "Run operator mode: discover the active publish_plan.csv, process READY rows, "
+            "write logs/status, keep prepared tabs open, and stop before final publish."
+        ),
+    )
     parser.add_argument("--platform", choices=["tiktok", "facebook"])
     parser.add_argument("--publish-id", default="", help="Optional publish task ID for logs/screenshots")
     parser.add_argument("--client-id", default="", help="Optional client ID for logs and summaries")
@@ -1780,10 +1873,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--facebook-upload-mode",
         choices=FACEBOOK_UPLOAD_MODES,
-        default="input-only",
+        default="auto",
         help=(
-            "Facebook upload strategy. Default: input-only, which never opens a native "
-            "file chooser. auto tries input first, then a Playwright-controlled file chooser."
+            "Facebook upload strategy. Default: auto, which tries input first and then a "
+            "Playwright-controlled file chooser. input-only never opens a native file chooser."
         ),
     )
     parser.add_argument(
@@ -1888,7 +1981,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     configure_utf8_stdio()
     try:
-        return run(parse_args(argv))
+        args = parse_args(argv)
+        if args.one_click or not argv:
+            args = configure_one_click(args)
+        return run(args)
     except (BitBrowserError, requests.RequestException) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

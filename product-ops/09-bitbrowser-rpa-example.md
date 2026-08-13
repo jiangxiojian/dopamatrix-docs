@@ -16,6 +16,32 @@
 
 示例不会自动点击最终发布按钮。这样可以降低误发、错账号、错产品和平台弹窗带来的风险。
 
+## 一键运行
+
+把投放包放在项目目录中，并准备好 `publish_plan.csv`、`账号环境台账.csv` 和素材文件后，运营人员可以直接运行：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py
+```
+
+也可以双击：
+
+```text
+docs\scripts\publishing\run_publisher.cmd
+```
+
+一键模式会自动：
+
+1. 找到项目中唯一包含 `READY` 任务的 `publish_plan.csv`。
+2. 读取账号环境台账，按 `account_key` 找到比特浏览器窗口。
+3. 自动打开或连接指纹环境。
+4. 每条任务新开独立 Tab。
+5. 自动上传媒体、填写文案、截图并写入 JSONL。
+6. 把结果状态写回计划表。
+7. 停在最终发布前，保留任务 Tab 给人工检查。
+
+一键模式不会点击 TikTok 发布或 Facebook 发布按钮。找不到计划表、找到多个含 `READY` 任务的计划表，或平台需要人工验证码/人脸验证时，脚本会停止并输出原因。
+
 ## 前置条件
 
 1. 本机已安装并登录比特浏览器。
@@ -97,12 +123,12 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 脚本会打开 Meta Business Suite composer，尝试填文案和上传图片。当前已在 `Bright Auto Picks` Page 上验证：脚本可以进入 composer、通过受控 file chooser 上传图片、填写文案、截图，并停在最终发布按钮前。
 
-Facebook 上传有三种模式：
+Facebook 上传有三种模式；普通运行不需要传这个参数，默认使用 `auto`：
 
 | 参数 | 用途 |
 | --- | --- |
-| `--facebook-upload-mode input-only` | 默认值。只尝试页面内 `input[type=file]`，不会打开系统文件选择器；失败时稳定返回 `UPLOAD_NOT_CONFIRMED`。 |
-| `--facebook-upload-mode auto` | 先尝试页面内 file input；失败后尝试 Playwright 能接管的 file chooser。当前 FB Page 图片帖实测可成功。 |
+| `--facebook-upload-mode auto` | 默认值。先尝试页面内 file input；失败后尝试 Playwright 能接管的 file chooser。当前 FB Page 图片帖多轮实测可成功。 |
+| `--facebook-upload-mode input-only` | 只尝试页面内 `input[type=file]`，不会打开系统文件选择器；当前页面会稳定返回 `UPLOAD_NOT_CONFIRMED`。 |
 | `--facebook-upload-mode file-chooser` | 只走受控 file chooser，适合排查 FB 上传按钮。 |
 
 不要设计“裸点上传按钮后人工文件管理器弹出来再处理”的流程。Windows 原生文件选择器不属于网页 DOM，脚本接管失败时会卡住整条任务；当前脚本已移除这类裸点 fallback。
@@ -296,13 +322,15 @@ post_url 自动识别
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
 | TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 曾写回 `PREPARED`，后因测试草稿不发布已人工回填为 `REJECTED_MANUAL` |
 | TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
-| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证：`input-only` 不会弹系统文件选择器但当前无法确认上传；`auto` 可通过受控 file chooser 上传图片、填文案、截图，停在发布前 |
+| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证：`auto` 连续多轮通过受控 file chooser 上传图片、填文案、截图，停在发布前；普通运行无需传上传模式参数 |
 | 关闭指纹窗口后由脚本重新打开是否会串 Tab | 已验证：`--stop-after-connect --trace-tabs` 看到默认/历史页面保留，脚本新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-cold-start.jsonl` |
 | 指纹窗口已打开时再执行脚本是否会串 Tab | 已验证：脚本不会复用已有 TK/FB 页面，会继续新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-already-open.jsonl` |
 | TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条和 FB 单条都在新 Tab 完成草稿准备，原页面未被覆盖；同一命令连续跑 TK+FB 时曾因 FB 等待超时中断，后续还需优化批量顺序稳定性 |
 | 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png` |
 | 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png` |
 | Facebook 文件选择器弹出风险 | 已确认：系统原生文件管理器会导致脚本等待超时；已移除裸点 fallback，后续只允许页面 input 或受控 file chooser |
+| Facebook `auto` 多轮稳定性 | 已验证：窗口已打开连续 3 次、`file-chooser` 直连 3 次、冷启动 1 次、完全不传上传参数 1 次均完成上传和文案填充 |
+| 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
