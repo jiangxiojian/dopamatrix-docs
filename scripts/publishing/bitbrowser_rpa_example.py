@@ -60,6 +60,21 @@ DEFAULT_UPLOAD_WAIT_MS = 60_000
 DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
 DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
+MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
+PLAN_STATUS_COLUMNS = {
+    "publish_id": ("发布ID", "id"),
+    "status": ("状态",),
+    "last_result_status": ("最后结果状态",),
+    "last_result_at": ("最后结果时间",),
+    "result_screenshot": ("结果截图",),
+    "error_type": ("错误类型",),
+    "error_message": ("错误信息",),
+    "post_url": ("帖子链接", "发布链接"),
+    "published_at": ("发布时间",),
+    "manual_operator": ("人工操作人",),
+    "manual_checked_at": ("人工确认时间",),
+    "manual_note": ("人工备注",),
+}
 
 
 class BitBrowserError(RuntimeError):
@@ -266,6 +281,97 @@ def append_jsonl_log(log_path: Path, payload: dict[str, Any]) -> None:
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         fh.write("\n")
+
+
+def _resolve_csv_column(fieldnames: list[str], canonical: str) -> str:
+    normalized = {field.strip().lower(): field for field in fieldnames if field}
+    for candidate in (canonical, *PLAN_STATUS_COLUMNS.get(canonical, ())):
+        matched = normalized.get(candidate.strip().lower())
+        if matched:
+            return matched
+    return canonical
+
+
+def update_publish_plan_row(
+    csv_path: Path,
+    publish_id: str,
+    updates: dict[str, str],
+) -> dict[str, str]:
+    rows = _read_csv_rows(csv_path)
+    if not rows:
+        raise BitBrowserError(f"Publish plan is empty: {csv_path}")
+
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = list(reader.fieldnames or [])
+
+    publish_id_column = _resolve_csv_column(fieldnames, "publish_id")
+    if publish_id_column not in fieldnames:
+        raise BitBrowserError(f"Publish plan has no publish_id column: {csv_path}")
+
+    column_map: dict[str, str] = {}
+    for key in updates:
+        column = _resolve_csv_column(fieldnames, key)
+        column_map[key] = column
+        if column not in fieldnames:
+            fieldnames.append(column)
+
+    matched_row: dict[str, str] | None = None
+    for row in rows:
+        if row.get(publish_id_column, "").strip() != publish_id:
+            continue
+        for key, value in updates.items():
+            row[column_map[key]] = value
+        matched_row = row
+        break
+
+    if matched_row is None:
+        raise BitBrowserError(f"publish_id not found in plan: {publish_id}")
+
+    with csv_path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return {column_map[key]: value for key, value in updates.items()}
+
+
+def build_plan_status_updates(payload: dict[str, Any]) -> dict[str, str]:
+    result = payload.get("result") or {}
+    finished_at = result.get("finished_at") or datetime.now().isoformat(timespec="seconds")
+    status = str(result.get("status") or "FAILED")
+    return {
+        "status": status,
+        "last_result_status": status,
+        "last_result_at": str(finished_at),
+        "result_screenshot": str(result.get("screenshot") or ""),
+        "error_type": str(result.get("error_type") or ""),
+        "error_message": str(result.get("error_message") or ""),
+    }
+
+
+def write_plan_status_from_payload(plan_csv: Path, payload: dict[str, Any]) -> dict[str, str]:
+    plan = payload.get("plan") or {}
+    publish_id = str(plan.get("publish_id") or "").strip()
+    if not publish_id:
+        raise BitBrowserError("Cannot update publish plan row without publish_id.")
+    return update_publish_plan_row(plan_csv, publish_id, build_plan_status_updates(payload))
+
+
+def write_failure_plan_status_from_payload(
+    plan_csv: Path,
+    payload: dict[str, Any],
+) -> dict[str, str]:
+    updates = {
+        key: value
+        for key, value in build_plan_status_updates(payload).items()
+        if value or key in {"status", "last_result_status", "last_result_at", "error_type", "error_message"}
+    }
+    plan = payload.get("plan") or {}
+    publish_id = str(plan.get("publish_id") or "").strip()
+    if not publish_id:
+        raise BitBrowserError("Cannot update publish plan row without publish_id.")
+    return update_publish_plan_row(plan_csv, publish_id, updates)
 
 
 def configure_utf8_stdio() -> None:
@@ -694,8 +800,6 @@ def append_plan_failure(
     task_started_at: str | None = None,
     media_path: str = "",
 ) -> None:
-    if not args.log_jsonl:
-        return
     started_at = task_started_at or datetime.now().isoformat(timespec="seconds")
     payload = {
         "plan": {
@@ -717,7 +821,10 @@ def append_plan_failure(
             "finished_at": datetime.now().isoformat(timespec="seconds"),
         },
     }
-    append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+    if args.log_jsonl:
+        append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+    if getattr(args, "write_plan_status", False):
+        write_failure_plan_status_from_payload(plan_path, payload)
 
 
 def write_failure_logs(
@@ -919,7 +1026,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 
         return log_payload
     except Exception as exc:
-        write_failure_logs(
+        failure_payload = write_failure_logs(
             args,
             plan,
             type(exc).__name__,
@@ -927,6 +1034,9 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             page=page,
             screenshot_path=screenshot_path,
         )
+        args._failure_logged_by_single = True
+        if getattr(args, "write_plan_status", False) and getattr(args, "plan_csv_path", None):
+            write_failure_plan_status_from_payload(args.plan_csv_path, failure_payload)
         raise
     finally:
         if browser is not None and args.close_profile:
@@ -1007,6 +1117,12 @@ def run_plan(args: argparse.Namespace) -> int:
                 payload["result"]["status"] = "PLANNED"
                 payload["result"]["finished_at"] = datetime.now().isoformat(timespec="seconds")
                 append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+            if args.write_plan_status and not args.print_plan:
+                updated = write_plan_status_from_payload(plan_path, payload)
+                print(
+                    "Publish plan status updated:",
+                    json.dumps(updated, ensure_ascii=False),
+                )
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
             if code != 0:
@@ -1025,15 +1141,16 @@ def run_plan(args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
             exit_code = 1
-            append_plan_failure(
-                args,
-                plan_path,
-                entry,
-                type(exc).__name__,
-                str(exc),
-                task_started_at=task_started_at,
-                media_path=str(media_path),
-            )
+            if not getattr(task_args, "_failure_logged_by_single", False):
+                append_plan_failure(
+                    args,
+                    plan_path,
+                    entry,
+                    type(exc).__name__,
+                    str(exc),
+                    task_started_at=task_started_at,
+                    media_path=str(media_path),
+                )
             if not args.continue_on_error:
                 raise
 
@@ -1041,6 +1158,9 @@ def run_plan(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.backfill_publish_id:
+        backfill_manual_publish(args)
+        return 0
     if args.plan_csv:
         return run_plan(args)
     if not args.platform:
@@ -1049,6 +1169,50 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit("--media is required unless --plan-csv is provided.")
     run_single(args)
     return 0
+
+
+def backfill_manual_publish(args: argparse.Namespace) -> None:
+    if not args.plan_csv:
+        raise SystemExit("--plan-csv is required when using --backfill-publish-id.")
+
+    status = args.backfill_status
+    if status == "PUBLISHED_MANUAL" and not args.post_url:
+        raise SystemExit("--post-url is required for PUBLISHED_MANUAL backfill.")
+
+    plan_path = Path(args.plan_csv).expanduser().resolve()
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    updates = {
+        "status": status,
+        "last_result_status": status,
+        "last_result_at": checked_at,
+        "post_url": args.post_url or "",
+        "published_at": args.published_at or (checked_at if status == "PUBLISHED_MANUAL" else ""),
+        "manual_operator": args.manual_operator or "",
+        "manual_checked_at": checked_at,
+        "manual_note": args.manual_note or "",
+    }
+    updated = update_publish_plan_row(plan_path, args.backfill_publish_id, updates)
+
+    payload = {
+        "plan": {
+            "publish_id": args.backfill_publish_id,
+            "plan_csv": str(plan_path),
+        },
+        "result": {
+            "status": status,
+            "post_url": args.post_url or "",
+            "published_at": updates["published_at"],
+            "manual_operator": args.manual_operator or "",
+            "manual_checked_at": checked_at,
+            "manual_note": args.manual_note or "",
+            "finished_at": checked_at,
+        },
+    }
+    if args.log_jsonl:
+        append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+        print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
+
+    print("Manual publish backfilled:", json.dumps(updated, ensure_ascii=False))
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -1084,6 +1248,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--continue-on-error",
         action="store_true",
         help="Continue with later plan rows after one row fails.",
+    )
+    parser.add_argument(
+        "--write-plan-status",
+        action="store_true",
+        help=(
+            "Write PREPARED/PARTIAL/FAILED and screenshot/error fields back to the "
+            "publish plan CSV. Off by default so test runs do not mutate operator sheets."
+        ),
     )
     parser.add_argument(
         "--delivery-csv",
@@ -1130,6 +1302,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"Suggested: {DEFAULT_LOG_JSONL}"
         ),
     )
+    parser.add_argument(
+        "--backfill-publish-id",
+        help="Manually backfill a publish_id after the operator has published or rejected it.",
+    )
+    parser.add_argument(
+        "--backfill-status",
+        choices=MANUAL_BACKFILL_STATUSES,
+        default="PUBLISHED_MANUAL",
+        help="Manual backfill status. Defaults to PUBLISHED_MANUAL.",
+    )
+    parser.add_argument("--post-url", help="Published post URL for manual backfill.")
+    parser.add_argument("--published-at", help="Published time for manual backfill.")
+    parser.add_argument("--manual-operator", help="Operator name for manual backfill.")
+    parser.add_argument("--manual-note", help="Manual note for backfill.")
     parser.add_argument("--pause", action="store_true", help="Pause before closing connection")
     parser.add_argument("--close-profile", action="store_true")
     return parser.parse_args(argv)

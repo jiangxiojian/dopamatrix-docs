@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-08-12  
+> 更新时间：2026-08-13  
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -129,7 +129,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 publish_id,client_id,product_id,platform,content_type,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note
 ```
 
-脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析；账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。
+脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析，所以计划表建议放在投放包目录内；如果复制到别的目录测试，`media_path` 最好改成绝对路径。账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。
 
 如果不带 `--print-plan`，脚本会按计划表顺序执行。建议实测时先加 `--limit 1`，并写入 JSONL 汇总日志：
 
@@ -142,6 +142,22 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 `--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。
 
+如果希望真实执行后同步更新计划表状态，显式加 `--write-plan-status`：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --only-publish-id PUB-FB-TEST-001 `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
+  --write-plan-status
+```
+
+`--write-plan-status` 默认关闭，避免预览或误跑时改动运营表。开启后会按 `publish_id` 更新或追加这些字段：
+
+```csv
+status,last_result_status,last_result_at,result_screenshot,error_type,error_message
+```
+
 常用筛选参数：
 
 | 参数 | 用途 |
@@ -150,6 +166,31 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 | `--only-publish-id PUB-FB-TEST-001` | 只跑指定发布任务，避免误跑其他平台。 |
 | `--only-platform facebook` | 只跑某个平台的 READY 任务。 |
 
+## 人工发布后回填
+
+脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --backfill-publish-id PUB-FB-TEST-001 `
+  --backfill-status PUBLISHED_MANUAL `
+  --post-url "https://www.facebook.com/..." `
+  --published-at "2026-08-13T16:30:00" `
+  --manual-operator "operator-name" `
+  --manual-note "人工检查无误后发布" `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+```
+
+当前支持的人工回填状态：
+
+| 状态 | 用途 |
+| --- | --- |
+| `PUBLISHED_MANUAL` | 人工已发布，需要带 `--post-url`。 |
+| `REJECTED_MANUAL` | 人工检查后决定不发布。 |
+| `PREPARED` | 人工确认草稿已准备好，但暂不发布。 |
+| `FAILED` | 人工确认本条任务失败。 |
+
 ## 示例脚本的边界
 
 当前脚本只适合技术验证：
@@ -157,9 +198,10 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行和追加 `publish_logs.jsonl`，但还没有回写计划表状态。
+- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态和人工回填帖子链接。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
+- 没有自动读取发布后的 post URL。
 - 没有自动点击最终发布按钮。
 
 生产化时需要补：
@@ -172,7 +214,7 @@ account_registry 查询
 平台弹窗识别
 人工确认 UI
 失败重试
-post_url 回填
+post_url 自动识别
 ```
 
 ## 需要实机验证的问题
@@ -182,18 +224,18 @@ post_url 回填
 | `POST /health` 是否可用 | 本机已验证，返回 `success=true` |
 | `/browser/open` 返回的是 `http`、`ws` 还是其他字段 | 已用真实 TK 测试窗口验证返回 `ws` |
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
-| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证一次：视频上传成功 |
-| TikTok caption 是否能自动填写 | 已验证一次：从 CSV 自动拼接并写入 description |
+| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 已写回 `PREPARED` |
+| TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
 | Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证两次：单条命令和 `publish_plan.csv` 计划模式均可通过文件选择器自动上传图片、填文案、截图，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
 
-1. 用真实比特环境跑一遍 TikTok。
+1. 用同一窗口按计划表顺序跑 TK + FB 各 1 条，确认跨平台顺序执行不串状态。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
-3. 将脚本输出的 JSON 和截图整理为批量 `publish_logs`。
-4. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
-5. 在桌面端做“运行发布任务/等待人工确认/回填结果”的最小界面。
+3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
+4. 增加异常分类，先覆盖登录失效、账号验证、上传失败、平台弹窗和未知错误。
+5. 在网页或小工具里做“任务列表/截图/人工回填”的最小界面。
 
 ## 外部资料
 

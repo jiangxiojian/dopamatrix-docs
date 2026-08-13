@@ -1,6 +1,6 @@
 # RPA 发布脚本建设计划
 
-> 更新时间：2026-08-12  
+> 更新时间：2026-08-13  
 > 文档类型：方案 / 待办拆解  
 > 状态：实施中  
 > 适用阶段：客户试点前  
@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | 比特浏览器 Local API 连通 | 已验证 | `POST /health` 可用，`/browser/open` 可打开指定窗口。 |
 | CDP 接管比特窗口 | 已验证 | 已通过返回的 `ws` 地址连接真实窗口。 |
-| TikTok 视频上传 | 已验证一次 | 可打开上传页、上传 MP4、从 CSV 拼接 caption，停在发布前。 |
+| TikTok 视频上传 | 已验证计划模式 | 可打开上传页、上传 MP4、从 CSV/计划表拼接 caption，停在发布前；`PUB-TK-TEST-001` 已写回 `PREPARED`。 |
 | TikTok 内容检查弹窗处理 | 已实现基础版 | 默认 `pause`，人工决定是否开启自动内容检查。 |
 | Facebook Page 图片帖准备 | 已验证 | 在 `Bright Auto Picks` Page 上验证：单条命令和 `publish_plan.csv` 计划模式均可自动上传图片、填文案、截图，停在发布前。 |
 | 交付 CSV 读取 | 已实现基础版 | 按 `视频文件名` 匹配 `矩阵投放文案对照表.csv`。 |
@@ -34,6 +34,8 @@
 | 发布计划预览 | 已实现基础版 | 支持 `--plan-csv --limit --print-plan`，可不打开浏览器检查任务解析结果。 |
 | 批量队列读取 | 已实现基础版 | 支持读取 READY 行，并用 `--limit`、`--only-publish-id`、`--only-platform` 限制执行范围。 |
 | JSONL 汇总日志 | 已实现基础版 | 支持 `--log-jsonl` 追加 `PLANNED/PREPARED/FAILED` 记录。 |
+| 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
+| 人工发布后回填 | 已实现基础版 | 支持 `--backfill-publish-id` 回填 `PUBLISHED_MANUAL/REJECTED_MANUAL`、帖子链接、发布时间、人工备注，并追加 JSONL。 |
 | 单次截图 | 已实现 | 每次 RPA 可保存发布前截图。 |
 | 单次 JSON 日志 | 已实现基础版 | `--log-json` 可记录账号、素材、截图和执行结果。 |
 | 计划预览 | 已实现 | `--print-plan` 可只解析台账/素材/文案，不打开浏览器。 |
@@ -42,13 +44,13 @@
 
 | 模块 | 缺口 | 为什么重要 |
 | --- | --- | --- |
-| 批量发布队列 | 现在一次命令只跑一个平台、一条素材。 | 运营需要一次导入多条任务，逐条执行和记录结果。 |
-| TK + FB 顺序模式 | 还没有 `both` 或队列内跨平台顺序执行。 | 一个素材包通常要同时发 TK 视频和 FB 图文。 |
-| 发布计划格式 | 交付 CSV 主要按视频文件名匹配，FB 图片路径、平台、账号、排期字段还不完整。 | 没有统一 `publish_plan`，后面无法批量调度和回填。 |
-| 发布结果总表 | 现在只有单次 JSON，未形成汇总 CSV/JSONL。 | 需要看每条任务成功、失败、截图、人工处理状态。 |
-| 发布后回填 | 还不能读取帖子 URL、发布时间、平台 post id。 | 报告、归因和客户交付都需要帖子链接和状态。 |
+| 批量发布队列 | 基础版已能读取多条 READY 行并顺序执行；还没有大样本连续彩排和并发窗口调度。 | 运营需要一次导入多条任务，逐条执行和记录结果，同时不能误发或串号。 |
+| TK + FB 顺序模式 | 计划表内已经能放 TK 和 FB 两个平台任务，但同一窗口跨平台连续执行还没有实机验收。 | 一个素材包通常要同时发 TK 视频和 FB 图文。 |
+| 发布计划格式 | 模板已存在；还不是由 DopaMatrix 导出包自动生成，也没有内置状态字段模板。 | 运营手工整理容易出错，后续需要自动生成和回填。 |
+| 发布结果总表 | JSONL 基础版已完成；还没有汇总 CSV、报告看板和 post URL 自动采集。 | 需要看每条任务成功、失败、截图、人工处理状态。 |
+| 发布后回填 | 手工回填命令已完成；还不能自动读取帖子 URL、发布时间、平台 post id。 | 报告、归因和客户交付都需要帖子链接和状态。 |
 | Facebook 内容类型 | 只验证了 Page 图片帖。 | 后续还需要 FB 视频/Reels、快拍、个人主页测试入口。 |
-| TikTok 多样本稳定性 | 只验证过少量真实上传。 | 需要连续 3-5 条样本证明选择器和弹窗处理可靠。 |
+| TikTok 多样本稳定性 | 已完成 1 条计划模式实机验证，还没有连续 3-5 条样本。 | 需要连续样本证明选择器和弹窗处理可靠。 |
 | 异常分类 | 账号验证、验证码、上传失败、素材格式不支持、Page 选错等未系统化。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
 | 人工确认台 | 现在只停在浏览器页面，没有统一任务列表。 | 批量运行时需要集中看截图、账号、客户、素材、文案。 |
 | 平台弹窗库 | 只处理少数安全弹窗。 | 平台 UI 会频繁弹新提示，需要记录和逐步补规则。 |
@@ -62,8 +64,10 @@
 | P0-1 | 定义 `publish_plan.csv` 模板 | 已完成。支持 TK 视频和 FB 图片；包含平台、账号键、窗口 ID、素材路径、文案、短链、排期、状态字段。 |
 | P0-2 | 实现批量队列读取 | 已实现基础版。脚本可读取 READY 任务，按顺序逐条执行，并支持 `--limit`。 |
 | P0-3 | 实现结果日志汇总 | 已实现基础版。每条任务可写入 JSONL，记录 `PLANNED/PREPARED/FAILED` 等状态。 |
-| P0-4 | 支持同一窗口跨平台顺序执行 | 同一个 profile 可先跑 TK 再跑 FB，但不并发操作同一窗口。 |
-| P0-5 | 完成 TK/FB 各 3 条样本彩排 | 每条都有截图、日志、人工确认结果和异常记录。 |
+| P0-4 | 增加计划表状态回写 | 已实现基础版。显式 `--write-plan-status` 后写回执行状态、截图和错误信息。 |
+| P0-5 | 增加发布后手工回填命令 | 已实现基础版。人工发布或拒绝后可回填帖子 URL、发布时间和备注。 |
+| P0-6 | 支持同一窗口跨平台顺序执行 | 同一个 profile 可先跑 TK 再跑 FB，但不并发操作同一窗口。 |
+| P0-7 | 完成 TK/FB 各 3 条样本彩排 | 每条都有截图、日志、人工确认结果和异常记录。 |
 
 ### P1：提高稳定性和可运营性
 
@@ -71,8 +75,8 @@
 | --- | --- | --- |
 | P1-1 | 拆分 `TikTokPublisher` / `FacebookPublisher` | 平台选择器、弹窗处理、上传逻辑分开维护。 |
 | P1-2 | 增加异常分类 | 失败时能区分登录失效、账号验证、上传控件失败、素材失败、平台弹窗、未知错误。 |
-| P1-3 | 增加发布后手工回填命令 | 人工发布后可把 post URL、发布时间、状态写回日志。 |
-| P1-4 | 增加截图命名规则 | 截图按 `publish_id/platform/account_key/timestamp` 自动命名。 |
+| P1-3 | 生成汇总 CSV 或简易报告页 | 从 JSONL/计划表里查看每条任务的状态、截图、人工结果和帖子链接。 |
+| P1-4 | 增强截图命名规则 | 截图按 `publish_id/platform/account_key/timestamp` 自动命名，后续可按账号归档。 |
 | P1-5 | 支持 Facebook Reels/视频 | 至少验证 1 条视频上传到 FB Page，并停在发布前。 |
 
 ### P2：从脚本走向小工具
@@ -86,11 +90,11 @@
 
 ## 建议执行顺序
 
-1. 先定义 `publish_plan.csv`，不要急着继续堆平台 selector。
-2. 让脚本支持 `--plan-csv` 和 `--limit`，一次只跑前 1-3 条。
-3. 每条执行后写 `publish_logs.jsonl`，即使失败也要落盘。
-4. 再做 TK/FB 顺序执行，先顺序，不并发。
-5. 最后补回填命令和人工确认页面。
+1. 用 `--print-plan` 预览真实投放包，确认账号、素材路径、caption 和短链都正确。
+2. 用 `--only-publish-id` 每次只跑 1 条，必要时加 `--write-plan-status` 回写计划表。
+3. 人工确认发布后，用 `--backfill-publish-id` 回填帖子链接和发布时间。
+4. 再做 TK/FB 同窗口顺序彩排，先顺序，不并发。
+5. 最后补平台发布器拆分、异常分类和人工确认页面。
 
 这样做的原因是：现在单条动作已经验证过，下一步最容易失控的不是“按钮点不到”，而是运营批量跑的时候不知道哪条任务用了哪个账号、哪个素材、卡在哪里、有没有误发风险。
 
@@ -117,10 +121,10 @@ publish_plan.csv
 推荐字段：
 
 ```csv
-publish_id,client_id,product_id,platform,content_type,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note
+publish_id,client_id,product_id,platform,content_type,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note,last_result_status,last_result_at,result_screenshot,error_type,error_message,post_url,published_at,manual_operator,manual_checked_at,manual_note
 ```
 
-其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从账号台账查；只有临时测试才直接填窗口 ID。
+其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从账号台账查；只有临时测试才直接填窗口 ID。`media_path` 的相对路径按 `publish_plan.csv` 所在目录解析，所以计划表应保存在投放包目录内。
 
 ### 发布日志
 
@@ -150,6 +154,15 @@ publish_logs.jsonl
   "finished_at": "2026-08-12T16:01:00"
 }
 ```
+
+状态回写和人工回填目前都写 `publish_plan.csv`，并可同时追加 JSONL；后续做看板时，优先从 JSONL 建汇总，再反向检查计划表是否漏回填。
+
+## 状态维护规则
+
+1. 每次脚本新增能力后，同步更新本文件的“当前已完成”和“仍未完成”。
+2. 每次真实平台验证后，同步更新 [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) 的“需要实机验证的问题”。
+3. 每次待办状态改变后，同步更新 [TODO.md](./TODO.md)。
+4. 每次提交前，在 [CHANGELOG.md](./CHANGELOG.md) 记录新增能力、验证结果和仍未覆盖的风险。
 
 ## 状态机
 
@@ -195,4 +208,4 @@ publish_logs.jsonl
 
 ## 下一步
 
-下一步建议进入 `P0-2`：实现批量队列读取和 `--limit 1` 的真实执行闭环。完成后再做批量日志汇总。这个顺序最稳，能避免脚本越写越像临时命令拼接。
+下一步建议进入 `P0-6` 和 `P0-7`：做 TK + FB 同窗口顺序彩排，并补足 TK/FB 各 3 条样本记录。完成后补平台发布器拆分和异常分类，避免脚本继续堆成一个大函数。
