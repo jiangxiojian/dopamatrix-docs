@@ -14,6 +14,7 @@
 - RPA 示例脚本新增 `--summarize-log-jsonl`、`--summary-csv` 和 `--summary-include-history`，可把 `publish_logs.jsonl` 导出为运营可读的 `publish_summary.csv`。
 - RPA 示例脚本新增基础异常分类，失败和部分成功会写入稳定 `error_type`，便于运营判断重试、换号或人工处理。
 - RPA 示例脚本新增 `--tab-mode new|reuse-first`，默认每条任务新开 Tab，避免同一比特窗口里 TK/FB 顺序任务互相覆盖草稿。
+- RPA 示例脚本新增 `--trace-tabs`、`--stop-after-connect` 和 `--close-task-tab`，用于诊断同一指纹窗口内多个 Tab 的隔离情况。
 
 ### Changed
 
@@ -28,6 +29,9 @@
 - 使用真实投放包 `publish_plan.csv` 验证 `PUB-TK-TEST-001`，脚本停在最终发布前，截图保存到 `E:\project\dopaMatrix\output\publish-rpa\PUB-TK-TEST-001-tiktok-20260813-162823.png`；该测试草稿不发布，已回填 `REJECTED_MANUAL`。
 - 使用真实 `publish_logs.jsonl` 导出 `E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv`，当前包含 TK/FB 两条最新任务，并补齐客户、产品、短链和归因字段。
 - 使用临时 `publish_plan_error_test.csv` 和坏 API 地址验证异常分类，连接失败会写回 `BITBROWSER_CONNECTION`。
+- 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 验证 Tab 隔离：关闭窗口后由脚本重新打开、窗口已打开后再次执行，均会保留原有 Tab 并新建任务 Tab。
+- 使用默认 `--tab-mode new` 验证 TikTok 冷启动完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png`；脚本未点击发布。
+- 使用默认 `--tab-mode new` 验证 Facebook 已打开窗口完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png`；脚本未点击发布。
 
 ## 2026-07-27
 

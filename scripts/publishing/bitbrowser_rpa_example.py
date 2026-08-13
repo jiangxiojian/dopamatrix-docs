@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -351,6 +352,35 @@ def append_jsonl_log(log_path: Path, payload: dict[str, Any]) -> None:
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         fh.write("\n")
+
+
+def sanitize_tab_url(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return url[:180]
+    if not parts.scheme or not parts.netloc:
+        return url[:180]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))[:180]
+
+
+def snapshot_tabs(context: Any, selected_page: Any | None = None) -> list[dict[str, Any]]:
+    tabs: list[dict[str, Any]] = []
+    for index, tab in enumerate(context.pages, start=1):
+        try:
+            url = sanitize_tab_url(tab.url)
+        except Exception as exc:
+            url = f"<url-error:{type(exc).__name__}>"
+        tabs.append(
+            {
+                "index": index,
+                "selected": tab == selected_page,
+                "url": url,
+            }
+        )
+    return tabs
 
 
 def read_jsonl_log(log_path: Path) -> list[dict[str, Any]]:
@@ -780,7 +810,7 @@ def resolve_account_ledger_for_task(
     return resolve_account_ledger(media_path, explicit_csv)
 
 
-def connect_page(cdp_url: str, tab_mode: str = "new"):
+def connect_page(cdp_url: str, tab_mode: str = "new", trace_tabs: bool = False):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -792,13 +822,28 @@ def connect_page(cdp_url: str, tab_mode: str = "new"):
     pw = sync_playwright().start()
     browser = pw.chromium.connect_over_cdp(cdp_url)
     context = browser.contexts[0] if browser.contexts else browser.new_context()
+    trace: dict[str, Any] = {"tab_mode": tab_mode}
+    if trace_tabs:
+        trace["before"] = snapshot_tabs(context)
     if tab_mode == "reuse-first":
         page = context.pages[0] if context.pages else context.new_page()
     elif tab_mode == "new":
         page = context.new_page()
     else:
         raise BitBrowserError(f"Unsupported tab mode: {tab_mode}")
-    return pw, browser, page
+    if trace_tabs:
+        trace["after_select"] = snapshot_tabs(context, page)
+        print("Tab trace:", json.dumps(trace, ensure_ascii=False, indent=2))
+    return pw, browser, page, trace
+
+
+def close_page_best_effort(page: Any | None) -> None:
+    if page is None:
+        return
+    try:
+        page.close()
+    except Exception:
+        pass
 
 
 def set_first_file_input(page, media_path: Path, timeout_ms: int = DEFAULT_UPLOAD_WAIT_MS) -> bool:
@@ -1250,8 +1295,51 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     pw = None
     browser = None
     page = None
+    tab_trace: dict[str, Any] = {}
     try:
-        pw, browser, page = connect_page(opened.cdp_url, args.tab_mode)
+        pw, browser, page, tab_trace = connect_page(
+            opened.cdp_url,
+            args.tab_mode,
+            args.trace_tabs,
+        )
+        if args.stop_after_connect:
+            result = {
+                "status": "CONNECTED",
+                "tab_mode": args.tab_mode,
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            if args.trace_tabs and browser is not None:
+                result["tab_trace_after_connect"] = snapshot_tabs(
+                    browser.contexts[0],
+                    page,
+                )
+                print(
+                    "Tab trace after connect:",
+                    json.dumps(result["tab_trace_after_connect"], ensure_ascii=False, indent=2),
+                )
+            log_payload = {
+                "plan": plan,
+                "bitbrowser": {
+                    "health": health,
+                    "opened_profile": {
+                        "profile_id": opened.profile_id,
+                        "cdp_source": opened.cdp_source,
+                    },
+                    "tab_trace": tab_trace,
+                },
+                "result": result,
+            }
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if args.log_json:
+                write_json_log(Path(args.log_json).expanduser().resolve(), log_payload)
+                print(f"JSON log written: {Path(args.log_json).expanduser().resolve()}")
+            if args.log_jsonl:
+                append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), log_payload)
+                print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
+            if args.close_task_tab:
+                close_page_best_effort(page)
+                page = None
+            return log_payload
         if args.platform == "tiktok":
             result = publish_tiktok(
                 page,
@@ -1286,9 +1374,19 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
                     "profile_id": opened.profile_id,
                     "cdp_source": opened.cdp_source,
                 },
+                "tab_trace": tab_trace,
             },
             "result": result,
         }
+        if args.trace_tabs and browser is not None:
+            tab_trace["after_publish_step"] = snapshot_tabs(
+                browser.contexts[0],
+                page,
+            )
+            print(
+                "Tab trace after publish step:",
+                json.dumps(tab_trace["after_publish_step"], ensure_ascii=False, indent=2),
+            )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.log_json:
             write_json_log(Path(args.log_json).expanduser().resolve(), log_payload)
@@ -1304,6 +1402,10 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 
         if args.pause:
             input("Press Enter after human check to close the browser connection...")
+
+        if args.close_task_tab:
+            close_page_best_effort(page)
+            page = None
 
         return log_payload
     except Exception as exc:
@@ -1611,6 +1713,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "each publishing task opens a fresh tab and does not overwrite an existing draft. "
             "Use reuse-first only for legacy debugging."
         ),
+    )
+    parser.add_argument(
+        "--trace-tabs",
+        action="store_true",
+        help="Print and log sanitized tab snapshots before and after selecting the task tab.",
+    )
+    parser.add_argument(
+        "--stop-after-connect",
+        action="store_true",
+        help="Open the profile, connect to CDP, trace tabs, and exit before any upload or composer action.",
+    )
+    parser.add_argument(
+        "--close-task-tab",
+        action="store_true",
+        help="Close only the task tab after the run. The BitBrowser profile remains open unless --close-profile is also set.",
     )
     parser.add_argument(
         "--dry-run",

@@ -143,6 +143,14 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 只有在明确想复用第一个 Tab 做兼容性排查时，才临时传 `--tab-mode reuse-first`。
 
+排查 Tab 行为时可加：
+
+| 参数 | 用途 |
+| --- | --- |
+| `--trace-tabs` | 打印并写入脱敏后的 Tab 快照，能看到连接前、选中任务页后、上传填文案后的 Tab URL。 |
+| `--stop-after-connect` | 只打开比特窗口并连接 CDP，打印 Tab 快照后退出，不进入上传或 composer。 |
+| `--close-task-tab` | 运行结束后只关闭脚本新开的任务 Tab，保留指纹浏览器环境。 |
+
 如果不带 `--print-plan`，脚本会按计划表顺序执行。建议实测时先加 `--limit 1`，并写入 JSONL 汇总日志：
 
 ```powershell
@@ -274,12 +282,16 @@ post_url 自动识别
 | TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 曾写回 `PREPARED`，后因测试草稿不发布已人工回填为 `REJECTED_MANUAL` |
 | TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
 | Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证两次：单条命令和 `publish_plan.csv` 计划模式均可通过文件选择器自动上传图片、填文案、截图，停在发布前 |
-| TK + FB 同窗口顺序执行是否会串 Tab | 2026-08-13 发现旧脚本会复用已有 Tab，导致 FB 页面覆盖 TK 草稿；已改为默认每条任务新开 Tab，待重新实机复测 |
+| 关闭指纹窗口后由脚本重新打开是否会串 Tab | 已验证：`--stop-after-connect --trace-tabs` 看到默认/历史页面保留，脚本新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-cold-start.jsonl` |
+| 指纹窗口已打开时再执行脚本是否会串 Tab | 已验证：脚本不会复用已有 TK/FB 页面，会继续新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-already-open.jsonl` |
+| TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条和 FB 单条都在新 Tab 完成草稿准备，原页面未被覆盖；同一命令连续跑 TK+FB 时曾因 FB 等待超时中断，后续还需优化批量顺序稳定性 |
+| 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png` |
+| 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png` |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
 
-1. 用同一窗口按计划表顺序跑 TK + FB 各 1 条，使用默认 `--tab-mode new` 重新确认跨平台顺序执行不串状态。
+1. 优化计划模式连续跑多平台时的超时和失败隔离，避免一条 FB 等待过长拖住整组任务。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
 4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。
