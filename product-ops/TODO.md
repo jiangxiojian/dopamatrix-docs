@@ -42,7 +42,7 @@
 | 在发布计划中加入 `client_id`、`product_id`、`gene_version`、`attribution_token` | Phase 0 | 未开始 | 字段定义和生成规则 |
 | 实现交付目录/CSV 导入 | Phase 1 | 完成 | 能读取 `矩阵投放文案对照表.csv` 的导入流程 |
 | 建立 2-3 个 TikTok 账号和 2-3 个 Facebook Page 管理环境的账号台账 | Phase 1 | 进行中 | `platform_accounts` 试点数据 |
-| 跑通 3-5 条 TikTok 视频的脚本辅助发布 | Phase 1 | 进行中 | 已完成 1 条计划模式实机准备，状态写回 `PREPARED`；还需补 2-4 条样本 |
+| 跑通 3-5 条 TikTok 视频的脚本辅助发布 | Phase 1 | 进行中 | 已完成 1 条计划模式实机准备，测试草稿不发布并回填 `REJECTED_MANUAL`；还需补 2-4 条样本 |
 | 跑通 3-5 条 Facebook Page 图文帖的脚本辅助发布 | Phase 1 | 进行中 | 发布日志、截图、帖子链接、异常原因 |
 | 生成 Facebook 图文帖最小素材 | Phase 1 | 完成基础版 | 已有 FB 图片上传测试素材；后续要接真实产品图文模板 |
 | 人工录入或导入首批询盘 | Phase 3 | 未开始 | `leads` MVP 数据 |

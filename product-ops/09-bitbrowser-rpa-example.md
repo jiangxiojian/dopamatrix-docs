@@ -258,7 +258,7 @@ post_url 自动识别
 | `POST /health` 是否可用 | 本机已验证，返回 `success=true` |
 | `/browser/open` 返回的是 `http`、`ws` 还是其他字段 | 已用真实 TK 测试窗口验证返回 `ws` |
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
-| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 已写回 `PREPARED` |
+| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 曾写回 `PREPARED`，后因测试草稿不发布已人工回填为 `REJECTED_MANUAL` |
 | TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
 | Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证两次：单条命令和 `publish_plan.csv` 计划模式均可通过文件选择器自动上传图片、填文案、截图，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
@@ -268,7 +268,7 @@ post_url 自动识别
 1. 用同一窗口按计划表顺序跑 TK + FB 各 1 条，确认跨平台顺序执行不串状态。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
-4. 增加异常分类，先覆盖登录失效、账号验证、上传失败、平台弹窗和未知错误。
+4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。
 5. 在网页或小工具里做“任务列表/截图/人工回填”的最小界面。
 
 ## 外部资料

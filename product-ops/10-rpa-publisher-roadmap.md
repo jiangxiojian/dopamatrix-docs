@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | 比特浏览器 Local API 连通 | 已验证 | `POST /health` 可用，`/browser/open` 可打开指定窗口。 |
 | CDP 接管比特窗口 | 已验证 | 已通过返回的 `ws` 地址连接真实窗口。 |
-| TikTok 视频上传 | 已验证计划模式 | 可打开上传页、上传 MP4、从 CSV/计划表拼接 caption，停在发布前；`PUB-TK-TEST-001` 已写回 `PREPARED`。 |
+| TikTok 视频上传 | 已验证计划模式 | 可打开上传页、上传 MP4、从 CSV/计划表拼接 caption，停在发布前；`PUB-TK-TEST-001` 已验证并按“不发布”回填为 `REJECTED_MANUAL`。 |
 | TikTok 内容检查弹窗处理 | 已实现基础版 | 默认 `pause`，人工决定是否开启自动内容检查。 |
 | Facebook Page 图片帖准备 | 已验证 | 在 `Bright Auto Picks` Page 上验证：单条命令和 `publish_plan.csv` 计划模式均可自动上传图片、填文案、截图，停在发布前。 |
 | 交付 CSV 读取 | 已实现基础版 | 按 `视频文件名` 匹配 `矩阵投放文案对照表.csv`。 |
