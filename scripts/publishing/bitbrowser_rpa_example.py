@@ -59,8 +59,75 @@ DEFAULT_FACEBOOK_COMPOSER_URL = "https://business.facebook.com/latest/composer"
 DEFAULT_UPLOAD_WAIT_MS = 60_000
 DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
 DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
+DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
+SUMMARY_FIELDS = [
+    "publish_id",
+    "client_id",
+    "product_id",
+    "platform",
+    "content_type",
+    "account_key",
+    "profile_id",
+    "profile_name",
+    "media_path",
+    "title",
+    "caption_source",
+    "tracking_url",
+    "attribution_token",
+    "scheduled_at",
+    "status",
+    "uploaded",
+    "caption_filled",
+    "post_url",
+    "published_at",
+    "manual_operator",
+    "manual_checked_at",
+    "manual_note",
+    "screenshot",
+    "error_type",
+    "error_message",
+    "started_at",
+    "finished_at",
+    "plan_csv",
+    "url",
+    "checkpoint",
+]
+SUMMARY_LATEST_OUTCOME_FIELDS = {
+    "status",
+    "post_url",
+    "published_at",
+    "manual_operator",
+    "manual_checked_at",
+    "manual_note",
+    "error_type",
+    "error_message",
+    "finished_at",
+}
+SUMMARY_PLAN_COLUMNS = {
+    "publish_id": ("publish_id", "发布ID", "id"),
+    "client_id": ("client_id", "客户ID"),
+    "product_id": ("product_id", "产品ID", "sku"),
+    "platform": ("platform", "平台"),
+    "content_type": ("content_type", "内容类型"),
+    "account_key": ("account_key", "账号键", "account_code"),
+    "profile_id": ("browser_profile_id", "profile_id", "窗口ID", "browser_id"),
+    "media_path": ("media_path", "素材路径", "media", "path"),
+    "title": ("title", "标题", "社交平台标题"),
+    "tracking_url": ("tracking_url", "tracking_link", "追踪短链接", "url"),
+    "attribution_token": ("attribution_token", "归因token"),
+    "scheduled_at": ("scheduled_at", "排期时间"),
+    "status": ("status", "状态"),
+    "post_url": ("post_url", "帖子链接", "发布链接"),
+    "published_at": ("published_at", "发布时间"),
+    "manual_operator": ("manual_operator", "人工操作人"),
+    "manual_checked_at": ("manual_checked_at", "人工确认时间"),
+    "manual_note": ("manual_note", "人工备注"),
+    "screenshot": ("result_screenshot", "结果截图"),
+    "error_type": ("error_type", "错误类型"),
+    "error_message": ("error_message", "错误信息"),
+}
 PLAN_STATUS_COLUMNS = {
     "publish_id": ("发布ID", "id"),
     "status": ("状态",),
@@ -129,6 +196,8 @@ class AccountLedgerEntry:
 class PublishPlanEntry:
     publish_id: str
     platform: str
+    client_id: str = ""
+    product_id: str = ""
     content_type: str = ""
     account_key: str = ""
     browser_profile_id: str = ""
@@ -281,6 +350,147 @@ def append_jsonl_log(log_path: Path, payload: dict[str, Any]) -> None:
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         fh.write("\n")
+
+
+def read_jsonl_log(log_path: Path) -> list[dict[str, Any]]:
+    if not log_path.is_file():
+        raise BitBrowserError(f"JSONL log does not exist: {log_path}")
+
+    records: list[dict[str, Any]] = []
+    with log_path.open("r", encoding="utf-8") as fh:
+        for line_number, line in enumerate(fh, start=1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                body = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise BitBrowserError(
+                    f"Invalid JSONL line {line_number} in {log_path}: {exc}"
+                ) from exc
+            if isinstance(body, dict):
+                records.append(body)
+    return records
+
+
+def _summary_value(payload: dict[str, Any], key: str) -> str:
+    plan = payload.get("plan") or {}
+    result = payload.get("result") or {}
+    if key == "started_at":
+        value = plan.get("started_at", "")
+    elif key in {"finished_at", "url", "checkpoint", "uploaded", "caption_filled"}:
+        value = result.get(key, "")
+    else:
+        value = result.get(key, "")
+        if value in (None, ""):
+            value = plan.get(key, "")
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+def flatten_publish_log(payload: dict[str, Any]) -> dict[str, str]:
+    row = {field: _summary_value(payload, field) for field in SUMMARY_FIELDS}
+    if not row["publish_id"]:
+        row["publish_id"] = "(manual-entry)"
+    return row
+
+
+def load_plan_summary_index(plan_csv: Path) -> dict[str, dict[str, str]]:
+    rows = _read_csv_rows(plan_csv)
+    index: dict[str, dict[str, str]] = {}
+    for raw_row in rows:
+        publish_id = _first_nonempty(raw_row, *SUMMARY_PLAN_COLUMNS["publish_id"])
+        if not publish_id:
+            continue
+        summary: dict[str, str] = {}
+        for field, candidate_columns in SUMMARY_PLAN_COLUMNS.items():
+            summary[field] = _first_nonempty(raw_row, *candidate_columns)
+        index[publish_id] = summary
+    return index
+
+
+def enrich_summary_rows_from_plan(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    plan_cache: dict[str, dict[str, dict[str, str]]] = {}
+    for row in rows:
+        plan_csv = row.get("plan_csv", "").strip()
+        publish_id = row.get("publish_id", "").strip()
+        if not plan_csv or not publish_id or publish_id == "(manual-entry)":
+            continue
+        plan_path = Path(plan_csv).expanduser()
+        if not plan_path.is_absolute():
+            plan_path = plan_path.resolve()
+        plan_key = str(plan_path)
+        if plan_key not in plan_cache:
+            try:
+                plan_cache[plan_key] = load_plan_summary_index(plan_path)
+            except Exception:
+                plan_cache[plan_key] = {}
+        plan_row = plan_cache[plan_key].get(publish_id)
+        if not plan_row:
+            continue
+        for field in SUMMARY_FIELDS:
+            if not row.get(field) and plan_row.get(field):
+                row[field] = plan_row[field]
+    return rows
+
+
+def _row_sort_time(row: dict[str, str]) -> str:
+    return row.get("finished_at") or row.get("started_at") or ""
+
+
+def merge_summary_row(current: dict[str, str], incoming: dict[str, str]) -> dict[str, str]:
+    current_time = _row_sort_time(current)
+    incoming_time = _row_sort_time(incoming)
+    incoming_is_newer = incoming_time >= current_time
+    merged = current.copy()
+
+    if incoming_is_newer:
+        for field in SUMMARY_FIELDS:
+            value = incoming.get(field, "")
+            if field in SUMMARY_LATEST_OUTCOME_FIELDS:
+                merged[field] = value
+            elif value:
+                merged[field] = value
+    else:
+        for field in SUMMARY_FIELDS:
+            if not merged.get(field) and incoming.get(field):
+                merged[field] = incoming[field]
+
+    return merged
+
+
+def write_summary_csv(
+    jsonl_path: Path,
+    output_csv: Path,
+    include_history: bool = False,
+) -> list[dict[str, str]]:
+    rows = [flatten_publish_log(record) for record in read_jsonl_log(jsonl_path)]
+    rows = [row for row in rows if row.get("publish_id")]
+    rows = enrich_summary_rows_from_plan(rows)
+
+    if not include_history:
+        latest: dict[str, dict[str, str]] = {}
+        for row in rows:
+            key = row["publish_id"]
+            current = latest.get(key)
+            if current is None:
+                latest[key] = row
+            else:
+                latest[key] = merge_summary_row(current, row)
+        rows = sorted(latest.values(), key=lambda row: (row.get("platform", ""), row.get("publish_id", "")))
+    else:
+        rows = sorted(rows, key=lambda row: (_row_sort_time(row), row.get("publish_id", "")))
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with output_csv.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=SUMMARY_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    return rows
 
 
 def _resolve_csv_column(fieldnames: list[str], canonical: str) -> str:
@@ -476,6 +686,8 @@ def load_publish_plan(csv_path: Path) -> list[PublishPlanEntry]:
             PublishPlanEntry(
                 publish_id=publish_id,
                 platform=platform,
+                client_id=_first_nonempty(row, "client_id", "客户ID"),
+                product_id=_first_nonempty(row, "product_id", "产品ID", "sku"),
                 content_type=_first_nonempty(row, "content_type", "内容类型"),
                 account_key=_first_nonempty(row, "account_key", "账号键", "account_code"),
                 browser_profile_id=_first_nonempty(
@@ -805,6 +1017,8 @@ def append_plan_failure(
         "plan": {
             "started_at": started_at,
             "publish_id": entry.publish_id,
+            "client_id": entry.client_id,
+            "product_id": entry.product_id,
             "platform": entry.platform,
             "content_type": entry.content_type,
             "account_key": entry.account_key,
@@ -941,6 +1155,8 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     plan = {
         "started_at": run_started_at,
         "publish_id": args.publish_id,
+        "client_id": getattr(args, "client_id", ""),
+        "product_id": getattr(args, "product_id", ""),
         "platform": args.platform,
         "content_type": args.content_type,
         "profile_id": profile_id,
@@ -950,8 +1166,12 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         "media_path": str(media_path),
         "delivery_csv": str(delivery_csv) if delivery_csv else "",
         "account_ledger": str(account_ledger_path) if account_ledger_path else "",
+        "title": getattr(args, "title", ""),
         "caption_source": caption_source,
         "caption": caption,
+        "tracking_url": getattr(args, "tracking_url", ""),
+        "attribution_token": getattr(args, "attribution_token", ""),
+        "scheduled_at": getattr(args, "scheduled_at", ""),
         "content_check_action": content_check_action,
         "screenshot": str(screenshot_path),
     }
@@ -1085,12 +1305,18 @@ def run_plan(args: argparse.Namespace) -> int:
         caption = entry.build_caption()
         task_args = argparse.Namespace(**vars(args))
         task_args.publish_id = entry.publish_id
+        task_args.client_id = entry.client_id
+        task_args.product_id = entry.product_id
         task_args.platform = entry.platform
         task_args.content_type = entry.content_type
         task_args.account_key = entry.account_key or args.account_key
         task_args.profile_id = args.profile_id or entry.browser_profile_id or None
         task_args.media = str(media_path)
         task_args.caption = caption
+        task_args.title = entry.title
+        task_args.tracking_url = entry.tracking_url
+        task_args.attribution_token = entry.attribution_token
+        task_args.scheduled_at = entry.scheduled_at
         task_args.delivery_csv = None
         task_args.plan_dir = plan_path.parent
         task_args.plan_csv_path = plan_path
@@ -1158,6 +1384,16 @@ def run_plan(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.summarize_log_jsonl:
+        summary_csv = Path(args.summary_csv).expanduser().resolve()
+        rows = write_summary_csv(
+            Path(args.summarize_log_jsonl).expanduser().resolve(),
+            summary_csv,
+            include_history=args.summary_include_history,
+        )
+        print(f"Publish summary written: {summary_csv}")
+        print(f"Rows: {len(rows)}")
+        return 0
     if args.backfill_publish_id:
         backfill_manual_publish(args)
         return 0
@@ -1219,11 +1455,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="BitBrowser assisted publishing demo")
     parser.add_argument("--platform", choices=["tiktok", "facebook"])
     parser.add_argument("--publish-id", default="", help="Optional publish task ID for logs/screenshots")
+    parser.add_argument("--client-id", default="", help="Optional client ID for logs and summaries")
+    parser.add_argument("--product-id", default="", help="Optional product/SKU ID for logs and summaries")
     parser.add_argument("--content-type", default="", help="Optional content type, e.g. video/image")
     parser.add_argument("--profile-id", help="BitBrowser profile/window ID")
     parser.add_argument("--account-key", help="Account key in the optional account ledger")
     parser.add_argument("--media", help="Video or image path")
+    parser.add_argument("--title", default="", help="Optional title for logs and summaries")
     parser.add_argument("--caption", help="Caption/post text")
+    parser.add_argument("--tracking-url", default="", help="Optional tracking URL for logs and summaries")
+    parser.add_argument("--attribution-token", default="", help="Optional attribution token for logs and summaries")
+    parser.add_argument("--scheduled-at", default="", help="Optional scheduled time for logs and summaries")
     parser.add_argument("--screenshot", default=DEFAULT_SCREENSHOT)
     parser.add_argument("--bit-api", default=DEFAULT_BIT_API)
     parser.add_argument(
@@ -1301,6 +1543,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Optional JSONL log path for append-only publish logs. "
             f"Suggested: {DEFAULT_LOG_JSONL}"
         ),
+    )
+    parser.add_argument(
+        "--summarize-log-jsonl",
+        help="Read a publish JSONL log and export an operator-friendly summary CSV.",
+    )
+    parser.add_argument(
+        "--summary-csv",
+        default=DEFAULT_SUMMARY_CSV,
+        help=f"Output CSV for --summarize-log-jsonl. Default: {DEFAULT_SUMMARY_CSV}",
+    )
+    parser.add_argument(
+        "--summary-include-history",
+        action="store_true",
+        help="Export every JSONL event instead of only the latest event per publish_id.",
     )
     parser.add_argument(
         "--backfill-publish-id",

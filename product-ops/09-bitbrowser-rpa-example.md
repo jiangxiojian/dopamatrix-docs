@@ -166,6 +166,25 @@ status,last_result_status,last_result_at,result_screenshot,error_type,error_mess
 | `--only-publish-id PUB-FB-TEST-001` | 只跑指定发布任务，避免误跑其他平台。 |
 | `--only-platform facebook` | 只跑某个平台的 READY 任务。 |
 
+## 导出发布汇总
+
+如果要给运营快速看每条任务的当前状态，可以把 `publish_logs.jsonl` 导出为 CSV：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --summarize-log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv"
+```
+
+默认每个 `publish_id` 只保留最新状态，并会尽量从日志里的 `plan_csv` 反查补齐 `client_id`、`product_id`、`tracking_url`、`attribution_token`、素材路径、截图等字段。如果要排查历史过程，可以加：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --summarize-log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.history.csv" `
+  --summary-include-history
+```
+
 ## 人工发布后回填
 
 脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
@@ -198,7 +217,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态和人工回填帖子链接。
+- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接，以及导出 `publish_summary.csv`。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
 - 没有自动读取发布后的 post URL。
