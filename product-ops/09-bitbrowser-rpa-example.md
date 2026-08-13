@@ -142,6 +142,21 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 `--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。
 
+当前 `error_type` 已做基础分类，常见值包括：
+
+| 错误类型 | 含义 |
+| --- | --- |
+| `BITBROWSER_CONNECTION` | 比特浏览器本地 API 不通或端口不对。 |
+| `BITBROWSER_PROFILE_OPEN` | 窗口打开失败，或没有返回 CDP 地址。 |
+| `MEDIA_PATH_INVALID` | 素材路径为空或文件不存在。 |
+| `PLAN_CONFIG_INVALID` | 发布计划或账号台账缺关键字段。 |
+| `ACCOUNT_SETTING_CHECK` | 平台要求确认账号级设置，例如 TikTok 自动内容检查。 |
+| `ACCOUNT_VERIFICATION` | 疑似验证码、人脸、身份或安全验证。 |
+| `LOGIN_REQUIRED` | 疑似登录失效或需要重新登录。 |
+| `UPLOAD_NOT_CONFIRMED` | 页面未确认素材上传成功。 |
+| `CAPTION_NOT_FILLED` | 文案没有成功填入。 |
+| `PLATFORM_TIMEOUT` | 平台页面或控件等待超时。 |
+
 如果希望真实执行后同步更新计划表状态，显式加 `--write-plan-status`：
 
 ```powershell

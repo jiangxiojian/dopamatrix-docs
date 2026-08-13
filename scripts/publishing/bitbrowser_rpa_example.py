@@ -1003,6 +1003,39 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
     return Path(DEFAULT_SCREENSHOT)
 
 
+def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
+    haystack = f"{platform} {error_type} {error_message}".lower()
+    if "unsupported platform" in haystack:
+        return "UNSUPPORTED_PLATFORM"
+    if "media file does not exist" in haystack or "empty_media_path" in haystack:
+        return "MEDIA_PATH_INVALID"
+    if "profile-id is required" in haystack or "publish_id not found" in haystack:
+        return "PLAN_CONFIG_INVALID"
+    if "playwright is not installed" in haystack:
+        return "LOCAL_DEPENDENCY_MISSING"
+    if "failed to establish a new connection" in haystack or "/health" in haystack:
+        return "BITBROWSER_CONNECTION"
+    if "failed to open the profile" in haystack or "did not return a cdp address" in haystack:
+        return "BITBROWSER_PROFILE_OPEN"
+    if "content checks" in haystack:
+        return "ACCOUNT_SETTING_CHECK"
+    if "verification" in haystack or "captcha" in haystack or "face" in haystack or "identity" in haystack:
+        return "ACCOUNT_VERIFICATION"
+    if "login" in haystack or "log in" in haystack or "sign in" in haystack:
+        return "LOGIN_REQUIRED"
+    if "timeout" in haystack:
+        return "PLATFORM_TIMEOUT"
+    return error_type or "UNKNOWN_ERROR"
+
+
+def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
+    if not result.get("uploaded"):
+        return "UPLOAD_NOT_CONFIRMED", "Media upload was not confirmed by the page."
+    if not result.get("caption_filled"):
+        return "CAPTION_NOT_FILLED", "Caption field was not filled."
+    return "", ""
+
+
 def append_plan_failure(
     args: argparse.Namespace,
     plan_path: Path,
@@ -1030,7 +1063,7 @@ def append_plan_failure(
         },
         "result": {
             "status": "FAILED",
-            "error_type": error_type,
+            "error_type": classify_error(error_type, error_message, entry.platform),
             "error_message": error_message,
             "finished_at": datetime.now().isoformat(timespec="seconds"),
         },
@@ -1051,7 +1084,8 @@ def write_failure_logs(
 ) -> dict[str, Any]:
     result = {
         "status": "FAILED",
-        "error_type": error_type,
+        "error_type": classify_error(error_type, error_message, str(plan.get("platform", ""))),
+        "raw_error_type": error_type,
         "error_message": error_message,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -1214,6 +1248,10 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             if result.get("uploaded") and result.get("caption_filled")
             else "PARTIAL"
         )
+        if result["status"] == "PARTIAL":
+            partial_error_type, partial_error_message = classify_partial_result(result)
+            result["error_type"] = partial_error_type
+            result["error_message"] = partial_error_message
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
