@@ -10,6 +10,7 @@
 
 - 新增 [10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md)，记录 RPA 发布脚本从单条验证到批量半自动工具的建设计划、优先级和验收标准。
 - 新增投放包 `publish_plan.csv` 模板，并在 RPA 示例脚本中支持 `--plan-csv --limit --print-plan`。
+- RPA 示例脚本新增 `--log-jsonl`，支持计划任务按行追加 `PLANNED/PREPARED/FAILED` 汇总日志。
 - 新增 `product-ops` 文档组，用于沉淀事项清单截图之后的产品运营化讨论。
 - 新增 [README.md](./README.md)，作为专题索引和阅读入口。
 - 新增 [01-publishing-hub.md](./01-publishing-hub.md)，记录发布中台和半自动发布 MVP。

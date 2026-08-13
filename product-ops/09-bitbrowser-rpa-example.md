@@ -119,6 +119,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
   --limit 1 `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.preview.jsonl" `
   --print-plan
 ```
 
@@ -130,6 +131,17 @@ publish_id,client_id,product_id,platform,content_type,account_key,browser_profil
 
 脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析；账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。
 
+如果不带 `--print-plan`，脚本会按计划表顺序执行。建议实测时先加 `--limit 1`，并写入 JSONL 汇总日志：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --limit 1 `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+```
+
+`--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。
+
 ## 示例脚本的边界
 
 当前脚本只适合技术验证：
@@ -137,7 +149,7 @@ publish_id,client_id,product_id,platform,content_type,account_key,browser_profil
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行，但还没有状态回写和批量 JSONL 汇总。
+- 已支持读取 `publish_plan.csv` 的 READY 行和追加 `publish_logs.jsonl`，但还没有回写计划表状态。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
 - 没有自动点击最终发布按钮。

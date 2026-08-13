@@ -58,6 +58,7 @@ DEFAULT_TIKTOK_UPLOAD_URL = "https://www.tiktok.com/upload?lang=en"
 DEFAULT_FACEBOOK_COMPOSER_URL = "https://business.facebook.com/latest/composer"
 DEFAULT_UPLOAD_WAIT_MS = 60_000
 DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
+DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 
 
@@ -258,6 +259,13 @@ def write_json_log(log_path: Path, payload: dict[str, Any]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def append_jsonl_log(log_path: Path, payload: dict[str, Any]) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        fh.write("\n")
 
 
 def configure_utf8_stdio() -> None:
@@ -671,7 +679,42 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
     return Path(DEFAULT_SCREENSHOT)
 
 
-def run_single(args: argparse.Namespace) -> int:
+def append_plan_failure(
+    args: argparse.Namespace,
+    plan_path: Path,
+    entry: PublishPlanEntry,
+    error_type: str,
+    error_message: str,
+    task_started_at: str | None = None,
+    media_path: str = "",
+) -> None:
+    if not args.log_jsonl:
+        return
+    started_at = task_started_at or datetime.now().isoformat(timespec="seconds")
+    payload = {
+        "plan": {
+            "started_at": started_at,
+            "publish_id": entry.publish_id,
+            "platform": entry.platform,
+            "content_type": entry.content_type,
+            "account_key": entry.account_key,
+            "profile_id": entry.browser_profile_id,
+            "media_path": media_path or entry.media_path,
+            "plan_csv": str(plan_path),
+            "plan_row_status": entry.status,
+            "caption_source": "plan_csv",
+        },
+        "result": {
+            "status": "FAILED",
+            "error_type": error_type,
+            "error_message": error_message,
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+        },
+    }
+    append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+
+
+def run_single(args: argparse.Namespace) -> dict[str, Any]:
     media_path = Path(args.media).expanduser().resolve()
     if not media_path.exists():
         raise SystemExit(f"Media file does not exist: {media_path}")
@@ -746,8 +789,8 @@ def run_single(args: argparse.Namespace) -> int:
         caption_source = "delivery_csv"
         print("Caption source: delivery CSV")
     elif caption:
-        caption_source = "manual_arg"
-        print("Caption source: manual arg")
+        caption_source = "plan_csv" if getattr(args, "from_plan", False) else "manual_arg"
+        print(f"Caption source: {caption_source}")
     else:
         raise SystemExit(
             "caption is required unless a delivery CSV is available and matches the media filename."
@@ -771,85 +814,12 @@ def run_single(args: argparse.Namespace) -> int:
         "content_check_action": content_check_action,
         "screenshot": str(screenshot_path),
     }
+    if getattr(args, "plan_csv_path", None):
+        plan["plan_csv"] = str(args.plan_csv_path)
+        plan["plan_row_status"] = getattr(args, "plan_row_status", "")
     if args.print_plan:
         print(json.dumps({"plan": plan}, ensure_ascii=False, indent=2))
-    return 0
-
-
-def run_plan(args: argparse.Namespace) -> int:
-    plan_path = Path(args.plan_csv).expanduser().resolve()
-    entries = [entry for entry in load_publish_plan(plan_path) if entry.is_ready()]
-    if args.limit is not None:
-        entries = entries[: args.limit]
-    if not entries:
-        raise SystemExit(f"No READY publish plan rows found: {plan_path}")
-
-    print(f"Publish plan: {plan_path}")
-    print(f"Ready rows selected: {len(entries)}")
-
-    exit_code = 0
-    for index, entry in enumerate(entries, start=1):
-        if entry.platform not in {"tiktok", "facebook"}:
-            print(
-                f"SKIP {entry.publish_id}: unsupported platform={entry.platform}",
-                file=sys.stderr,
-            )
-            exit_code = 1
-            continue
-        if not entry.media_path:
-            print(f"SKIP {entry.publish_id}: media_path is empty", file=sys.stderr)
-            exit_code = 1
-            continue
-
-        media_path = resolve_path_maybe_relative(entry.media_path, plan_path.parent)
-        caption = entry.build_caption()
-        task_args = argparse.Namespace(**vars(args))
-        task_args.publish_id = entry.publish_id
-        task_args.platform = entry.platform
-        task_args.content_type = entry.content_type
-        task_args.account_key = entry.account_key or args.account_key
-        task_args.profile_id = args.profile_id or entry.browser_profile_id or None
-        task_args.media = str(media_path)
-        task_args.caption = caption
-        task_args.delivery_csv = None
-        task_args.plan_dir = plan_path.parent
-        task_args.screenshot = (
-            str(default_screenshot_path(entry.platform, entry.publish_id))
-            if args.screenshot == DEFAULT_SCREENSHOT
-            else args.screenshot
-        )
-        if args.log_json:
-            log_path = Path(args.log_json).expanduser()
-            if len(entries) > 1 or log_path.suffix.lower() != ".json":
-                log_path = log_path / f"{entry.publish_id}.json"
-            task_args.log_json = str(log_path)
-
-        print(f"[{index}/{len(entries)}] {entry.publish_id} {entry.platform} {media_path}")
-        try:
-            run_single(task_args)
-        except SystemExit as exc:
-            code = exc.code if isinstance(exc.code, int) else 1
-            if code != 0:
-                exit_code = code
-            if not args.continue_on_error:
-                raise
-        except Exception as exc:
-            print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
-            exit_code = 1
-            if not args.continue_on_error:
-                raise
-
-    return exit_code
-
-
-def run(args: argparse.Namespace) -> int:
-    if args.plan_csv:
-        return run_plan(args)
-    if not args.platform:
-        raise SystemExit("--platform is required unless --plan-csv is provided.")
-    if not args.media:
-        raise SystemExit("--media is required unless --plan-csv is provided.")
-    return run_single(args)
+        return {"plan": plan, "result": {"status": "PLANNED"}}
 
     bit = BitBrowserClient(args.bit_api)
     health = bit.health()
@@ -877,24 +847,28 @@ def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"Unsupported platform: {args.platform}")
 
         page.screenshot(path=str(screenshot_path), full_page=True)
+        result["status"] = "PREPARED"
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
+        log_payload = {
+            "plan": plan,
+            "bitbrowser": {
+                "health": health,
+                "opened_profile": {
+                    "profile_id": opened.profile_id,
+                    "cdp_source": opened.cdp_source,
+                },
+            },
+            "result": result,
+        }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.log_json:
-            log_payload = {
-                "plan": plan,
-                "bitbrowser": {
-                    "health": health,
-                    "opened_profile": {
-                        "profile_id": opened.profile_id,
-                        "cdp_source": opened.cdp_source,
-                    },
-                },
-                "result": result,
-            }
             write_json_log(Path(args.log_json).expanduser().resolve(), log_payload)
             print(f"JSON log written: {Path(args.log_json).expanduser().resolve()}")
+        if args.log_jsonl:
+            append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), log_payload)
+            print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
 
         if args.dry_run:
             print("Dry run complete. The script intentionally did not click Publish/Post.")
@@ -904,7 +878,7 @@ def run(args: argparse.Namespace) -> int:
         if args.pause:
             input("Press Enter after human check to close the browser connection...")
 
-        return 0
+        return log_payload
     finally:
         if browser is not None and args.close_profile:
             browser.close()
@@ -913,6 +887,114 @@ def run(args: argparse.Namespace) -> int:
         if args.close_profile:
             time.sleep(1)
             bit.close_profile(profile_id)
+
+
+def run_plan(args: argparse.Namespace) -> int:
+    plan_path = Path(args.plan_csv).expanduser().resolve()
+    entries = [entry for entry in load_publish_plan(plan_path) if entry.is_ready()]
+    if args.limit is not None:
+        entries = entries[: args.limit]
+    if not entries:
+        raise SystemExit(f"No READY publish plan rows found: {plan_path}")
+
+    print(f"Publish plan: {plan_path}")
+    print(f"Ready rows selected: {len(entries)}")
+
+    exit_code = 0
+    for index, entry in enumerate(entries, start=1):
+        task_started_at = datetime.now().isoformat(timespec="seconds")
+        if entry.platform not in {"tiktok", "facebook"}:
+            print(
+                f"SKIP {entry.publish_id}: unsupported platform={entry.platform}",
+                file=sys.stderr,
+            )
+            append_plan_failure(args, plan_path, entry, "UNSUPPORTED_PLATFORM", "Unsupported platform")
+            exit_code = 1
+            continue
+        if not entry.media_path:
+            print(f"SKIP {entry.publish_id}: media_path is empty", file=sys.stderr)
+            append_plan_failure(args, plan_path, entry, "EMPTY_MEDIA_PATH", "media_path is empty")
+            exit_code = 1
+            continue
+
+        media_path = resolve_path_maybe_relative(entry.media_path, plan_path.parent)
+        caption = entry.build_caption()
+        task_args = argparse.Namespace(**vars(args))
+        task_args.publish_id = entry.publish_id
+        task_args.platform = entry.platform
+        task_args.content_type = entry.content_type
+        task_args.account_key = entry.account_key or args.account_key
+        task_args.profile_id = args.profile_id or entry.browser_profile_id or None
+        task_args.media = str(media_path)
+        task_args.caption = caption
+        task_args.delivery_csv = None
+        task_args.plan_dir = plan_path.parent
+        task_args.plan_csv_path = plan_path
+        task_args.plan_row_status = entry.status
+        task_args.from_plan = True
+        task_args.screenshot = (
+            str(default_screenshot_path(entry.platform, entry.publish_id))
+            if args.screenshot == DEFAULT_SCREENSHOT
+            else args.screenshot
+        )
+        task_args.log_jsonl = args.log_jsonl
+        if args.log_json:
+            log_path = Path(args.log_json).expanduser()
+            if len(entries) > 1 or log_path.suffix.lower() != ".json":
+                log_path = log_path / f"{entry.publish_id}.json"
+            task_args.log_json = str(log_path)
+
+        print(f"[{index}/{len(entries)}] {entry.publish_id} {entry.platform} {media_path}")
+        try:
+            payload = run_single(task_args)
+            if args.print_plan and args.log_jsonl:
+                payload["plan"]["plan_csv"] = str(plan_path)
+                payload["plan"]["plan_row_status"] = entry.status
+                payload["result"]["status"] = "PLANNED"
+                payload["result"]["finished_at"] = datetime.now().isoformat(timespec="seconds")
+                append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+            if code != 0:
+                exit_code = code
+                append_plan_failure(
+                    args,
+                    plan_path,
+                    entry,
+                    "SYSTEM_EXIT",
+                    str(exc),
+                    task_started_at=task_started_at,
+                    media_path=str(media_path),
+                )
+            if not args.continue_on_error:
+                raise
+        except Exception as exc:
+            print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
+            exit_code = 1
+            append_plan_failure(
+                args,
+                plan_path,
+                entry,
+                type(exc).__name__,
+                str(exc),
+                task_started_at=task_started_at,
+                media_path=str(media_path),
+            )
+            if not args.continue_on_error:
+                raise
+
+    return exit_code
+
+
+def run(args: argparse.Namespace) -> int:
+    if args.plan_csv:
+        return run_plan(args)
+    if not args.platform:
+        raise SystemExit("--platform is required unless --plan-csv is provided.")
+    if not args.media:
+        raise SystemExit("--media is required unless --plan-csv is provided.")
+    run_single(args)
+    return 0
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -977,6 +1059,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--log-json",
         help="Optional JSON result log path. Written after the browser preparation step completes.",
+    )
+    parser.add_argument(
+        "--log-jsonl",
+        help=(
+            "Optional JSONL log path for append-only publish logs. "
+            f"Suggested: {DEFAULT_LOG_JSONL}"
+        ),
     )
     parser.add_argument("--pause", action="store_true", help="Pause before closing connection")
     parser.add_argument("--close-profile", action="store_true")
