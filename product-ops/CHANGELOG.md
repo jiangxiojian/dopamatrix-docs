@@ -4,6 +4,16 @@
 > 文档类型：变更日志  
 > 状态：草案
 
+## 2026-08-13
+
+### Added
+
+- RPA 示例脚本新增 `--only-publish-id` 和 `--only-platform`，便于从计划表中只选择指定任务或平台实测。
+
+### Changed
+
+- Facebook Page 图片帖已完成 `publish_plan.csv` 计划模式真实执行验证：自动上传图片、填文案、截图并写入 `publish_logs.jsonl`，仍停在最终发布前。
+
 ## 2026-07-27
 
 ### Added

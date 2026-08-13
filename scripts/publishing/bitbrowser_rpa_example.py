@@ -508,12 +508,18 @@ def click_upload_entry_best_effort(page) -> bool:
 
 def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) -> bool:
     selectors = [
+        "[role='button']:has-text('添加照片/视频')",
         "button:has-text('添加照片/视频')",
         "div[role='button']:has-text('添加照片/视频')",
         "span:has-text('添加照片/视频')",
+        "[aria-label*='添加照片' i]",
+        "[aria-label*='照片' i]",
+        "[role='button']:has-text('Add photo/video')",
         "button:has-text('Add photo/video')",
         "div[role='button']:has-text('Add photo/video')",
         "span:has-text('Add photo/video')",
+        "[aria-label*='Add photo' i]",
+        "[aria-label*='photo' i]",
         "text=/Add photo\\/video/i",
         "text=/添加照片\\/视频/",
     ]
@@ -651,7 +657,7 @@ def publish_facebook(
     page.wait_for_timeout(5000)
 
     dismissed_popups = dismiss_safe_popups(page)
-    uploaded = set_first_file_input(page, media_path, upload_wait_ms)
+    uploaded = set_first_file_input(page, media_path, min(upload_wait_ms, 3000))
     used_file_chooser = False
     if not uploaded:
         uploaded = upload_via_facebook_media_button(page, media_path, upload_wait_ms)
@@ -712,6 +718,34 @@ def append_plan_failure(
         },
     }
     append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+
+
+def write_failure_logs(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+    error_type: str,
+    error_message: str,
+    page: Any | None = None,
+    screenshot_path: Path | None = None,
+) -> dict[str, Any]:
+    result = {
+        "status": "FAILED",
+        "error_type": error_type,
+        "error_message": error_message,
+        "finished_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    if page is not None and screenshot_path is not None:
+        try:
+            page.screenshot(path=str(screenshot_path), full_page=True)
+            result["screenshot"] = str(screenshot_path)
+        except Exception as screenshot_exc:
+            result["screenshot_error"] = str(screenshot_exc)
+    payload = {"plan": plan, "result": result}
+    if args.log_json:
+        write_json_log(Path(args.log_json).expanduser().resolve(), payload)
+    if args.log_jsonl:
+        append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+    return payload
 
 
 def run_single(args: argparse.Namespace) -> dict[str, Any]:
@@ -831,6 +865,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 
     pw = None
     browser = None
+    page = None
     try:
         pw, browser, page = connect_page(opened.cdp_url)
         if args.platform == "tiktok":
@@ -847,7 +882,11 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             raise SystemExit(f"Unsupported platform: {args.platform}")
 
         page.screenshot(path=str(screenshot_path), full_page=True)
-        result["status"] = "PREPARED"
+        result["status"] = (
+            "PREPARED"
+            if result.get("uploaded") and result.get("caption_filled")
+            else "PARTIAL"
+        )
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
@@ -879,6 +918,16 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             input("Press Enter after human check to close the browser connection...")
 
         return log_payload
+    except Exception as exc:
+        write_failure_logs(
+            args,
+            plan,
+            type(exc).__name__,
+            str(exc),
+            page=page,
+            screenshot_path=screenshot_path,
+        )
+        raise
     finally:
         if browser is not None and args.close_profile:
             browser.close()
@@ -892,6 +941,11 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 def run_plan(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan_csv).expanduser().resolve()
     entries = [entry for entry in load_publish_plan(plan_path) if entry.is_ready()]
+    if args.only_publish_id:
+        wanted = {item.strip() for item in args.only_publish_id.split(",") if item.strip()}
+        entries = [entry for entry in entries if entry.publish_id in wanted]
+    if args.only_platform:
+        entries = [entry for entry in entries if entry.platform == args.only_platform]
     if args.limit is not None:
         entries = entries[: args.limit]
     if not entries:
@@ -1016,6 +1070,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--limit",
         type=int,
         help="Maximum number of READY plan rows to process. Useful for safe tests.",
+    )
+    parser.add_argument(
+        "--only-publish-id",
+        help="Comma-separated publish_id filter for plan CSV mode.",
+    )
+    parser.add_argument(
+        "--only-platform",
+        choices=["tiktok", "facebook"],
+        help="Platform filter for plan CSV mode.",
     )
     parser.add_argument(
         "--continue-on-error",

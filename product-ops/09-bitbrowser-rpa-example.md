@@ -136,11 +136,19 @@ publish_id,client_id,product_id,platform,content_type,account_key,browser_profil
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
-  --limit 1 `
+  --only-publish-id PUB-FB-TEST-001 `
   --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
 ```
 
 `--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。
+
+常用筛选参数：
+
+| 参数 | 用途 |
+| --- | --- |
+| `--limit 1` | 只跑前 1 条 READY 任务，适合首次验证。 |
+| `--only-publish-id PUB-FB-TEST-001` | 只跑指定发布任务，避免误跑其他平台。 |
+| `--only-platform facebook` | 只跑某个平台的 READY 任务。 |
 
 ## 示例脚本的边界
 
@@ -176,7 +184,7 @@ post_url 回填
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
 | TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证一次：视频上传成功 |
 | TikTok caption 是否能自动填写 | 已验证一次：从 CSV 自动拼接并写入 description |
-| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证一次：通过文件选择器自动上传图片，文案填充成功，停在发布前 |
+| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证两次：单条命令和 `publish_plan.csv` 计划模式均可通过文件选择器自动上传图片、填文案、截图，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
