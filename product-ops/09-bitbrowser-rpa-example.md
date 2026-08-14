@@ -327,6 +327,20 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --summary-include-history
 ```
 
+## 生成 RPA 发布操作台
+
+如果要把计划表、执行日志、汇总 CSV 和截图放到一个本地页面里给运营检查，可以生成静态 HTML 操作台：
+
+```powershell
+python docs/scripts/publishing/rpa_operator_console.py `
+  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv" `
+  --output-html "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html"
+```
+
+第一版操作台不需要服务器，也不改 DopaMatrix 主项目。它会展示任务状态、平台、账号、客户、产品、素材路径、截图预览、错误信息、人工备注，并为每条任务生成 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令。即使没有提前导出 `publish_summary.csv`，也会尝试直接从 `publish_logs.jsonl` 读取每个 `publish_id` 的最新记录。
+
 ## 人工发布后回填
 
 脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
@@ -359,7 +373,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接，以及导出 `publish_summary.csv`。
+- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，以及生成本地 RPA 发布操作台 HTML。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
@@ -374,7 +388,7 @@ account_registry 查询
 发布状态机
 截图和日志入库
 平台弹窗识别
-人工确认 UI
+操作台状态直接回写
 失败重试
 post_url 自动识别
 ```
@@ -407,7 +421,7 @@ post_url 自动识别
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
 4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。
-5. 做 `RPA 发布操作台 V1`：本地网页读取计划表、JSONL、汇总 CSV 和截图，展示任务列表、截图预览、人工结果和回填命令。
+5. 增强 `RPA 发布操作台 V1`：从只读 HTML 进化到能辅助状态回填、失败重试选择和账号健康备注。
 
 ## 外部资料
 

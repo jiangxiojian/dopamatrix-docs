@@ -1,0 +1,442 @@
+"""
+Generate a local RPA operator console HTML page from publish CSV/JSONL files.
+
+The console is static on purpose: it reads local files, writes one HTML file, and
+does not require a web server or the main DopaMatrix application.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import html
+import json
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+DEFAULT_PLAN = "publish_plan.csv"
+DEFAULT_JSONL = "publish_logs.jsonl"
+DEFAULT_SUMMARY = "publish_summary.csv"
+DEFAULT_OUTPUT = "rpa_operator_console.html"
+
+FIELDS = [
+    "publish_id",
+    "platform",
+    "status",
+    "account_key",
+    "profile_name",
+    "client_id",
+    "product_id",
+    "media_path",
+    "title",
+    "uploaded",
+    "caption_filled",
+    "duration_seconds",
+    "error_type",
+    "error_message",
+    "screenshot",
+    "post_url",
+    "started_at",
+    "finished_at",
+    "manual_operator",
+    "manual_checked_at",
+    "manual_note",
+    "tracking_url",
+    "attribution_token",
+    "plan_csv",
+    "url",
+    "checkpoint",
+]
+
+
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as fh:
+        return [{k: (v or "").strip() for k, v in row.items()} for row in csv.DictReader(fh)]
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                body = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(body, dict):
+                rows.append(body)
+    return rows
+
+
+def first_nonempty(row: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = row.get(key, "")
+        if value:
+            return value
+    return ""
+
+
+def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
+    return {
+        "publish_id": first_nonempty(row, "publish_id", "发布ID", "id"),
+        "platform": first_nonempty(row, "platform", "平台"),
+        "status": first_nonempty(row, "status", "状态"),
+        "account_key": first_nonempty(row, "account_key", "账号键", "account_code"),
+        "profile_name": first_nonempty(row, "profile_name", "窗口名称"),
+        "client_id": first_nonempty(row, "client_id", "客户ID"),
+        "product_id": first_nonempty(row, "product_id", "产品ID", "sku"),
+        "media_path": first_nonempty(row, "media_path", "素材路径", "media", "path"),
+        "title": first_nonempty(row, "title", "标题", "社交平台标题"),
+        "tracking_url": first_nonempty(row, "tracking_url", "tracking_link", "追踪短链接"),
+        "attribution_token": first_nonempty(row, "attribution_token", "归因token"),
+        "screenshot": first_nonempty(row, "result_screenshot", "screenshot", "结果截图"),
+        "error_type": first_nonempty(row, "error_type", "错误类型"),
+        "error_message": first_nonempty(row, "error_message", "错误信息"),
+        "post_url": first_nonempty(row, "post_url", "帖子链接", "发布链接"),
+        "manual_operator": first_nonempty(row, "manual_operator", "人工操作人"),
+        "manual_checked_at": first_nonempty(row, "manual_checked_at", "人工确认时间"),
+        "manual_note": first_nonempty(row, "manual_note", "人工备注"),
+        "plan_csv": str(plan_csv),
+    }
+
+
+def normalize_summary_row(row: dict[str, str]) -> dict[str, str]:
+    normalized = {field: row.get(field, "").strip() for field in FIELDS}
+    normalized["profile_name"] = row.get("profile_name", "").strip()
+    return normalized
+
+
+def stringify(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+def jsonl_value(payload: dict[str, Any], key: str) -> str:
+    plan = payload.get("plan") or {}
+    result = payload.get("result") or {}
+    if not isinstance(plan, dict):
+        plan = {}
+    if not isinstance(result, dict):
+        result = {}
+
+    if key == "started_at":
+        value = plan.get("started_at", "")
+    elif key in {"finished_at", "uploaded", "caption_filled", "url", "checkpoint"}:
+        value = result.get(key, "")
+    else:
+        value = result.get(key, "")
+        if value in (None, ""):
+            value = plan.get(key, "")
+    return stringify(value).strip()
+
+
+def normalize_jsonl_row(payload: dict[str, Any]) -> dict[str, str]:
+    row = {field: jsonl_value(payload, field) for field in FIELDS}
+    if not row["publish_id"]:
+        row["publish_id"] = "(manual-entry)"
+    return row
+
+
+def latest_jsonl_rows(records: list[dict[str, Any]]) -> list[dict[str, str]]:
+    latest: dict[str, dict[str, str]] = {}
+    for record in records:
+        row = normalize_jsonl_row(record)
+        publish_id = row.get("publish_id", "")
+        if not publish_id:
+            continue
+        current = latest.get(publish_id)
+        if current is None or row_sort_time(row) >= row_sort_time(current):
+            latest[publish_id] = row
+    return list(latest.values())
+
+
+def row_sort_time(row: dict[str, str]) -> str:
+    return row.get("finished_at") or row.get("started_at") or ""
+
+
+def merge_rows(plan_rows: list[dict[str, str]], summary_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    for row in plan_rows:
+        publish_id = row.get("publish_id", "")
+        if publish_id:
+            merged[publish_id] = {field: row.get(field, "") for field in FIELDS}
+
+    for row in summary_rows:
+        publish_id = row.get("publish_id", "")
+        if not publish_id:
+            continue
+        current = merged.setdefault(publish_id, {field: "" for field in FIELDS})
+        for field in FIELDS:
+            value = row.get(field, "")
+            if value:
+                current[field] = value
+
+    return sorted(merged.values(), key=lambda item: (item.get("platform", ""), item.get("publish_id", "")))
+
+
+def to_file_uri(path_text: str, base_dir: Path) -> str:
+    if not path_text:
+        return ""
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = (base_dir / path).resolve()
+    try:
+        return path.as_uri()
+    except ValueError:
+        return ""
+
+
+def escape(value: str) -> str:
+    return html.escape(value or "", quote=True)
+
+
+def status_class(status: str) -> str:
+    key = (status or "UNKNOWN").upper()
+    if key in {"PREPARED", "PUBLISHED_MANUAL"}:
+        return "ok"
+    if key in {"FAILED", "PARTIAL"}:
+        return "bad"
+    if key in {"REJECTED_MANUAL", "SKIPPED"}:
+        return "muted"
+    return "wait"
+
+
+def build_backfill_command(row: dict[str, str], status: str) -> str:
+    plan_csv = row.get("plan_csv", "")
+    publish_id = row.get("publish_id", "")
+    return (
+        "python docs\\scripts\\publishing\\bitbrowser_rpa_example.py "
+        f"--plan-csv \"{plan_csv}\" "
+        f"--backfill-publish-id {publish_id} "
+        f"--backfill-status {status} "
+        "--manual-operator operator "
+        "--manual-note \"人工检查后回填\""
+    )
+
+
+def render_rows(rows: list[dict[str, str]], plan_dir: Path) -> str:
+    cards: list[str] = []
+    for row in rows:
+        screenshot_uri = to_file_uri(row.get("screenshot", ""), plan_dir)
+        screenshot = (
+            f'<a href="{escape(screenshot_uri)}" target="_blank"><img src="{escape(screenshot_uri)}" alt="screenshot"></a>'
+            if screenshot_uri
+            else '<div class="empty-shot">No screenshot</div>'
+        )
+        publish_cmd = build_backfill_command(row, "PUBLISHED_MANUAL")
+        reject_cmd = build_backfill_command(row, "REJECTED_MANUAL")
+        status = row.get("status", "")
+        duration = row.get("duration_seconds", "")
+        duration_text = f"{escape(duration)}s" if duration else ""
+        cards.append(
+            f"""
+            <article class="task" data-status="{escape(status.upper())}" data-platform="{escape(row.get('platform', '').lower())}">
+              <div class="shot">{screenshot}</div>
+              <div class="task-main">
+                <div class="task-head">
+                  <span class="badge {status_class(status)}">{escape(status or 'UNKNOWN')}</span>
+                  <span class="platform">{escape(row.get('platform', ''))}</span>
+                  <span class="duration">{duration_text}</span>
+                </div>
+                <h2>{escape(row.get('publish_id', ''))}</h2>
+                <p class="title">{escape(row.get('title', ''))}</p>
+                <div class="meta">
+                  <span>账号：{escape(row.get('account_key', ''))}</span>
+                  <span>窗口：{escape(row.get('profile_name', ''))}</span>
+                  <span>客户：{escape(row.get('client_id', ''))}</span>
+                  <span>产品：{escape(row.get('product_id', ''))}</span>
+                  <span>上传：{escape(row.get('uploaded', ''))}</span>
+                  <span>文案：{escape(row.get('caption_filled', ''))}</span>
+                </div>
+                <div class="paths">
+                  <div>短链：{escape(row.get('tracking_url', ''))}</div>
+                  <div>帖子：{escape(row.get('post_url', ''))}</div>
+                  <div>素材：{escape(row.get('media_path', ''))}</div>
+                  <div>截图：{escape(row.get('screenshot', ''))}</div>
+                </div>
+                <div class="manual">
+                  <div>人工：{escape(row.get('manual_operator', ''))} {escape(row.get('manual_checked_at', ''))}</div>
+                  <div>{escape(row.get('manual_note', ''))}</div>
+                </div>
+                <div class="error">{escape(row.get('error_type', ''))} {escape(row.get('error_message', ''))}</div>
+                <details>
+                  <summary>回填命令</summary>
+                  <label>已发布</label>
+                  <textarea readonly>{escape(publish_cmd)}</textarea>
+                  <label>不发布</label>
+                  <textarea readonly>{escape(reject_cmd)}</textarea>
+                </details>
+              </div>
+            </article>
+            """
+        )
+    return "\n".join(cards)
+
+
+def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_info: dict[str, str]) -> str:
+    counts = Counter((row.get("status") or "UNKNOWN").upper() for row in rows)
+    platforms = Counter((row.get("platform") or "unknown").lower() for row in rows)
+    avg_duration_values = [
+        float(row["duration_seconds"])
+        for row in rows
+        if row.get("duration_seconds", "").replace(".", "", 1).isdigit()
+    ]
+    avg_duration = round(sum(avg_duration_values) / len(avg_duration_values), 2) if avg_duration_values else 0
+    generated_at = datetime.now().isoformat(timespec="seconds")
+    body_rows = render_rows(rows, Path(args.plan_csv).expanduser().resolve().parent)
+    statuses = sorted(counts)
+    status_buttons = "".join(
+        f'<button data-filter-status="{escape(status)}">{escape(status)} ({counts[status]})</button>'
+        for status in statuses
+    )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPA 发布操作台</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --ink: #172026;
+      --muted: #667085;
+      --line: #d9e0e7;
+      --panel: #f8fafc;
+      --ok: #1f8a5f;
+      --bad: #b42318;
+      --wait: #946200;
+      --soft: #eef4ff;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; color: var(--ink); background: #ffffff; }}
+    header {{ padding: 18px 24px 14px; border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 2; }}
+    h1 {{ margin: 0 0 12px; font-size: 22px; font-weight: 700; }}
+    .source {{ display: grid; gap: 4px; color: var(--muted); font-size: 13px; }}
+    .stats {{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }}
+    .stat {{ border: 1px solid var(--line); background: var(--panel); padding: 8px 10px; min-width: 128px; }}
+    .stat strong {{ display: block; font-size: 20px; }}
+    .toolbar {{ display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 24px; border-bottom: 1px solid var(--line); }}
+    button {{ border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 10px; cursor: pointer; }}
+    button.active {{ border-color: #246bfd; background: var(--soft); color: #1849a9; }}
+    main {{ padding: 18px 24px 40px; display: grid; gap: 14px; }}
+    .task {{ border: 1px solid var(--line); display: grid; grid-template-columns: 260px 1fr; min-height: 190px; background: #fff; }}
+    .shot {{ background: #f2f5f7; border-right: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; }}
+    .shot img {{ width: 100%; height: 100%; object-fit: contain; display: block; }}
+    .empty-shot {{ color: var(--muted); font-size: 13px; }}
+    .task-main {{ padding: 14px 16px; min-width: 0; }}
+    .task-head {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }}
+    .badge {{ border: 1px solid var(--line); padding: 3px 7px; font-weight: 700; }}
+    .badge.ok {{ color: var(--ok); border-color: #9dd8bd; background: #ecfdf3; }}
+    .badge.bad {{ color: var(--bad); border-color: #fecdca; background: #fff1f3; }}
+    .badge.wait {{ color: var(--wait); border-color: #fedf89; background: #fffaeb; }}
+    .badge.muted {{ color: #475467; border-color: #d0d5dd; background: #f2f4f7; }}
+    h2 {{ margin: 8px 0 6px; font-size: 18px; }}
+    .title {{ margin: 0 0 10px; color: var(--ink); }}
+    .meta {{ display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }}
+    .paths, .manual, .error {{ font-size: 12px; color: var(--muted); display: grid; gap: 4px; overflow-wrap: anywhere; }}
+    .error {{ color: var(--bad); margin-top: 6px; }}
+    details {{ margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }}
+    summary {{ cursor: pointer; color: #1849a9; font-size: 13px; }}
+    label {{ display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }}
+    textarea {{ width: 100%; min-height: 62px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; border: 1px solid var(--line); padding: 8px; }}
+    @media (max-width: 820px) {{
+      header, .toolbar, main {{ padding-left: 14px; padding-right: 14px; }}
+      .task {{ grid-template-columns: 1fr; }}
+      .shot {{ height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RPA 发布操作台</h1>
+    <div class="source">
+      <span>生成时间：{escape(generated_at)}</span>
+      <span>计划表：{escape(source_info.get("plan_csv", ""))}</span>
+      <span>日志：{escape(source_info.get("log_jsonl", ""))}</span>
+      <span>汇总：{escape(source_info.get("summary_csv", ""))}</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><strong>{len(rows)}</strong>任务数</div>
+      <div class="stat"><strong>{platforms.get("tiktok", 0)}</strong>TikTok</div>
+      <div class="stat"><strong>{platforms.get("facebook", 0)}</strong>Facebook</div>
+      <div class="stat"><strong>{avg_duration}</strong>平均秒数</div>
+    </div>
+  </header>
+  <nav class="toolbar">
+    <button class="active" data-filter-status="ALL">全部 ({len(rows)})</button>
+    {status_buttons}
+  </nav>
+  <main>{body_rows}</main>
+  <script>
+    const buttons = document.querySelectorAll('button[data-filter-status]');
+    const tasks = document.querySelectorAll('.task');
+    buttons.forEach((button) => {{
+      button.addEventListener('click', () => {{
+        buttons.forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        const status = button.dataset.filterStatus;
+        tasks.forEach((task) => {{
+          task.style.display = status === 'ALL' || task.dataset.status === status ? '' : 'none';
+        }});
+      }});
+    }});
+  </script>
+</body>
+</html>
+"""
+
+
+def generate_console(args: argparse.Namespace) -> Path:
+    plan_path = Path(args.plan_csv).expanduser().resolve()
+    summary_path = Path(args.summary_csv).expanduser().resolve() if args.summary_csv else plan_path.parent / DEFAULT_SUMMARY
+    log_path = Path(args.log_jsonl).expanduser().resolve() if args.log_jsonl else plan_path.parent / DEFAULT_JSONL
+    output_path = Path(args.output_html).expanduser().resolve() if args.output_html else plan_path.parent / DEFAULT_OUTPUT
+
+    plan_rows = [normalize_plan_row(row, plan_path) for row in read_csv_rows(plan_path)]
+    summary_rows = [normalize_summary_row(row) for row in read_csv_rows(summary_path)]
+    if not summary_rows:
+        summary_rows = latest_jsonl_rows(read_jsonl(log_path))
+    rows = merge_rows(plan_rows, summary_rows)
+    if not rows:
+        raise SystemExit(f"No rows found for console: {plan_path}")
+
+    source_info = {
+        "plan_csv": str(plan_path),
+        "log_jsonl": str(log_path) if log_path.is_file() else "",
+        "summary_csv": str(summary_path) if summary_path.is_file() else "",
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_html(rows, args, source_info), encoding="utf-8")
+    return output_path
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a local RPA operator console HTML")
+    parser.add_argument("--plan-csv", required=True, help="publish_plan.csv path")
+    parser.add_argument("--log-jsonl", help="publish_logs.jsonl path")
+    parser.add_argument("--summary-csv", help="publish_summary.csv path")
+    parser.add_argument("--output-html", help="Output HTML path")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    output = generate_console(args)
+    print(f"RPA operator console written: {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
