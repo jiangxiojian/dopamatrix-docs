@@ -25,7 +25,7 @@
 | P0 | 增加计划表状态回写 | 完成基础版 | 显式 `--write-plan-status` 后，把执行状态、截图和错误写回计划表。 |
 | P0 | 增加人工发布后回填命令 | 完成基础版 | 人工发布或拒绝后，可回填帖子链接、发布时间和备注。 |
 | P0 | 导出 RPA 发布汇总 CSV | 完成基础版 | 从 JSONL 生成 `publish_summary.csv`，并从计划表补齐客户、产品、短链和归因字段。 |
-| P0 | 增加 RPA 异常分类 | 完成基础版 | 常见失败会写入稳定 `error_type`，例如 `BITBROWSER_CONNECTION`、`PROXY_CONNECTION_FAILED`、`UPLOAD_NOT_CONFIRMED`。 |
+| P0 | 增加 RPA 异常分类 | 完成基础版 | 常见失败会写入稳定 `error_type`，例如 `BITBROWSER_CONNECTION`、`PROXY_CONNECTION_FAILED`、`TIKTOK_UPLOAD_NOT_CONFIRMED`、`FACEBOOK_UPLOAD_NOT_CONFIRMED`。 |
 | P0 | 支持 TK + FB 同窗口顺序执行 | 完成基础版 | 2026-08-14 已完成 3 条 TK + 3 条 FB 同窗口顺序彩排，均停在发布前且不覆盖 Tab。 |
 | P0 | 一键运行发布准备 | 完成基础版 | 直接运行脚本或双击 `.cmd`，自动发现 READY 计划；没有 READY 且只有一个安全投放包时先生成计划，再准备草稿。 |
 | P0 | 完成 TK/FB 各 3 条样本彩排 | 完成基础版 | 2026-08-14 同素材重复彩排 3 条 TK + 3 条 FB，均回写 `PREPARED`，有截图、JSONL 和汇总 CSV。 |
@@ -33,7 +33,7 @@
 | P1 | RPA 发布操作台 V1 | 完成基础版 | 静态 HTML 读取计划表、JSONL、汇总 CSV 和截图，展示任务状态，并支持生成/复制人工回填命令。 |
 | P1 | RPA 操作台增强为确认工作台 | 未开始 | 直接在页面里辅助状态回填、失败重试选择、账号健康备注和报告数据导出。 |
 | P1 | 补 Facebook Page 视频/Reels 测试 | 未开始 | 视频上传和发布前人工确认链路。 |
-| P1 | 拆分平台发布器并细化异常分类 | 未开始 | TikTok/Facebook 逻辑独立，按平台弹窗和页面状态细分失败原因。 |
+| P1 | 拆分平台发布器并细化异常分类 | 完成基础版 | 已新增 `TikTokPublisher` / `FacebookPublisher` 注册表，并补平台级上传、caption、FB Page 权限和 file chooser 超时分类。 |
 
 ## P0：发布与归因最小闭环
 

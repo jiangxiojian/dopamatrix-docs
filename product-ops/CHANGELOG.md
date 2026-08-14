@@ -17,6 +17,8 @@
 - RPA 异常分类补充 `PROXY_CONNECTION_FAILED` 和 `BROWSER_TARGET_CLOSED`，并修复 `facebook` 平台名误触发 `face` 人脸验证判断的问题。
 - 将后续“简易报告页/人工确认台”统一命名为 `RPA 发布操作台 V1`，明确第一版读取本地计划表、JSONL、汇总 CSV 和截图。
 - 新增 `scripts/publishing/rpa_operator_console.py`，可生成本地静态 `RPA 发布操作台` HTML，集中展示任务状态、截图预览、错误信息、人工备注和回填命令；没有 `publish_summary.csv` 时会尝试从 `publish_logs.jsonl` 读取最新记录。
+- RPA 主脚本新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和平台注册表，主流程改为通过 `get_publisher(platform)` 调度平台准备逻辑。
+- RPA 异常分类继续细化：补充 `MEDIA_FORMAT_UNSUPPORTED`、`PLATFORM_RATE_LIMIT_OR_RESTRICTION`、`FACEBOOK_FILE_CHOOSER_TIMEOUT`、`FACEBOOK_PAGE_ACCESS`、`TIKTOK_CONTENT_CHECK_SETTING`，并把部分成功结果细分为 TK/FB 上传或文案失败。
 
 ### Verified
 
@@ -29,6 +31,7 @@
 - 首次批量彩排因代理未开启产生 6 条失败记录；开启代理后用 `--include-status FAILED,READY,PARTIAL` 成功重试，并导出 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv`。
 - 按“不发布”决定将 6 条批量彩排草稿统一人工回填为 `REJECTED_MANUAL`，避免误认为仍需人工发布。
 - 使用批量彩排目录生成 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html`，确认页面包含 6 条任务、`REJECTED_MANUAL` 状态筛选、截图 file 链接和 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令；同时验证缺少汇总 CSV 时可用 JSONL 兜底生成。
+- 静态验证平台注册表和错误分类：`tiktok` 可调度到 `TikTokPublisher`，`facebook` 可调度到 `FacebookPublisher`，部分成功结果可返回平台级错误码；用 FB `--print-plan` 确认计划表解析仍正常，不打开浏览器、不发布。
 
 ## 2026-08-13
 

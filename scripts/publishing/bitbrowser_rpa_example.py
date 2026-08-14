@@ -1652,6 +1652,76 @@ def publish_facebook(
     }
 
 
+class PlatformPublisher:
+    platform = ""
+
+    def prepare(
+        self,
+        page: Any,
+        media_path: Path,
+        caption: str,
+        args: argparse.Namespace,
+        content_check_action: str,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+class TikTokPublisher(PlatformPublisher):
+    platform = "tiktok"
+
+    def prepare(
+        self,
+        page: Any,
+        media_path: Path,
+        caption: str,
+        args: argparse.Namespace,
+        content_check_action: str,
+    ) -> dict[str, Any]:
+        return publish_tiktok(
+            page,
+            media_path,
+            caption,
+            args.upload_wait_ms,
+            content_check_action,
+        )
+
+
+class FacebookPublisher(PlatformPublisher):
+    platform = "facebook"
+
+    def prepare(
+        self,
+        page: Any,
+        media_path: Path,
+        caption: str,
+        args: argparse.Namespace,
+        content_check_action: str,
+    ) -> dict[str, Any]:
+        return publish_facebook(
+            page,
+            media_path,
+            caption,
+            args.upload_wait_ms,
+            args.facebook_upload_mode,
+        )
+
+
+PUBLISHERS: dict[str, PlatformPublisher] = {
+    publisher.platform: publisher
+    for publisher in (
+        TikTokPublisher(),
+        FacebookPublisher(),
+    )
+}
+
+
+def get_publisher(platform: str) -> PlatformPublisher:
+    publisher = PUBLISHERS.get(platform)
+    if publisher is None:
+        raise SystemExit(f"Unsupported platform: {platform}")
+    return publisher
+
+
 def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
     if publish_id:
         safe_publish_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", publish_id).strip("_")
@@ -1662,15 +1732,27 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
 
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
     haystack = f"{error_type} {error_message}".lower()
+    platform_key = platform.lower()
     if "unsupported platform" in haystack:
         return "UNSUPPORTED_PLATFORM"
     if "media file does not exist" in haystack or "empty_media_path" in haystack:
         return "MEDIA_PATH_INVALID"
+    if (
+        "unsupported file" in haystack
+        or "unsupported format" in haystack
+        or "file type" in haystack
+        or "video format" in haystack
+    ):
+        return "MEDIA_FORMAT_UNSUPPORTED"
     if "profile-id is required" in haystack or "publish_id not found" in haystack:
         return "PLAN_CONFIG_INVALID"
     if "playwright is not installed" in haystack:
         return "LOCAL_DEPENDENCY_MISSING"
-    if "err_proxy_connection_failed" in haystack or "proxy_connection_failed" in haystack:
+    if (
+        "err_proxy_connection_failed" in haystack
+        or "err_tunnel_connection_failed" in haystack
+        or "proxy_connection_failed" in haystack
+    ):
         return "PROXY_CONNECTION_FAILED"
     if "failed to establish a new connection" in haystack or "/health" in haystack:
         return "BITBROWSER_CONNECTION"
@@ -1680,8 +1762,19 @@ def classify_error(error_type: str, error_message: str, platform: str = "") -> s
         return "BITBROWSER_PROFILE_OPEN"
     if "target page" in haystack and "closed" in haystack:
         return "BROWSER_TARGET_CLOSED"
+    if "too many requests" in haystack or "rate limit" in haystack or "temporarily blocked" in haystack:
+        return "PLATFORM_RATE_LIMIT_OR_RESTRICTION"
+    if platform_key == "facebook" and "file chooser" in haystack and "timeout" in haystack:
+        return "FACEBOOK_FILE_CHOOSER_TIMEOUT"
+    if platform_key == "facebook" and "page" in haystack and (
+        "permission" in haystack
+        or "access" in haystack
+        or "not found" in haystack
+        or "unavailable" in haystack
+    ):
+        return "FACEBOOK_PAGE_ACCESS"
     if "content checks" in haystack:
-        return "ACCOUNT_SETTING_CHECK"
+        return "TIKTOK_CONTENT_CHECK_SETTING" if platform_key == "tiktok" else "ACCOUNT_SETTING_CHECK"
     if (
         "verification" in haystack
         or "captcha" in haystack
@@ -1698,9 +1791,18 @@ def classify_error(error_type: str, error_message: str, platform: str = "") -> s
 
 
 def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
+    platform = str(result.get("platform", "")).lower()
     if not result.get("uploaded"):
+        if platform == "tiktok":
+            return "TIKTOK_UPLOAD_NOT_CONFIRMED", "TikTok media upload was not confirmed by the page."
+        if platform == "facebook":
+            return "FACEBOOK_UPLOAD_NOT_CONFIRMED", "Facebook media upload was not confirmed by the page."
         return "UPLOAD_NOT_CONFIRMED", "Media upload was not confirmed by the page."
     if not result.get("caption_filled"):
+        if platform == "tiktok":
+            return "TIKTOK_CAPTION_NOT_FILLED", "TikTok caption field was not filled."
+        if platform == "facebook":
+            return "FACEBOOK_CAPTION_NOT_FILLED", "Facebook post text field was not filled."
         return "CAPTION_NOT_FILLED", "Caption field was not filled."
     return "", ""
 
@@ -1955,24 +2057,13 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
                 close_page_best_effort(page)
                 page = None
             return log_payload
-        if args.platform == "tiktok":
-            result = publish_tiktok(
-                page,
-                media_path,
-                caption,
-                args.upload_wait_ms,
-                content_check_action,
-            )
-        elif args.platform == "facebook":
-            result = publish_facebook(
-                page,
-                media_path,
-                caption,
-                args.upload_wait_ms,
-                args.facebook_upload_mode,
-            )
-        else:
-            raise SystemExit(f"Unsupported platform: {args.platform}")
+        result = get_publisher(args.platform).prepare(
+            page,
+            media_path,
+            caption,
+            args,
+            content_check_action,
+        )
 
         page.screenshot(path=str(screenshot_path), full_page=True)
         result["status"] = (
@@ -2083,7 +2174,7 @@ def run_plan(args: argparse.Namespace) -> int:
     exit_code = 0
     for index, entry in enumerate(entries, start=1):
         task_started_at = datetime.now().isoformat(timespec="seconds")
-        if entry.platform not in {"tiktok", "facebook"}:
+        if entry.platform not in PUBLISHERS:
             print(
                 f"SKIP {entry.publish_id}: unsupported platform={entry.platform}",
                 file=sys.stderr,

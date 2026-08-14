@@ -375,6 +375,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
 - 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，以及生成本地 RPA 发布操作台 HTML。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
+- 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
 - 没有自动读取发布后的 post URL。
@@ -412,6 +413,8 @@ post_url 自动识别
 | Facebook `auto` 多轮稳定性 | 已验证：窗口已打开连续 3 次、`file-chooser` 直连 3 次、冷启动 1 次、完全不传上传参数 1 次均完成上传和文案填充 |
 | `--plan-repeat` 重复任务彩排 | 已验证：同一个视频生成 3 条 TK、同一张图片生成 3 条 FB；代理开启后 6 条均回写 `PREPARED`，汇总 CSV 行数为 6 |
 | 代理未开启时的失败记录 | 已验证：首次批量彩排因代理未开启出现 `ERR_PROXY_CONNECTION_FAILED`；后续分类器已补 `PROXY_CONNECTION_FAILED`，重试后成功 |
+| 平台发布器拆分 | 已静态验证：`get_publisher('tiktok')` 返回 `TikTokPublisher`，`get_publisher('facebook')` 返回 `FacebookPublisher`；FB `--print-plan` 仍可正常解析计划表 |
+| 平台异常分类细化 | 已静态验证：部分成功结果会按平台返回 `TIKTOK_UPLOAD_NOT_CONFIRMED`、`FACEBOOK_UPLOAD_NOT_CONFIRMED`、`TIKTOK_CAPTION_NOT_FILLED`、`FACEBOOK_CAPTION_NOT_FILLED` 等错误码 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
@@ -419,9 +422,8 @@ post_url 自动识别
 
 1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
-3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
-4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。
-5. 增强 `RPA 发布操作台 V1`：从只读 HTML 进化到能辅助状态回填、失败重试选择和账号健康备注。
+3. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
+4. 增强 `RPA 发布操作台 V1`：从只读 HTML 进化到能辅助状态回填、失败重试选择和账号健康备注。
 
 ## 外部资料
 

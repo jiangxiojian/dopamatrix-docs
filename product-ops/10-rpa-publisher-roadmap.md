@@ -38,7 +38,8 @@
 | 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链、归因字段和执行耗时。 |
 | 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
 | 人工发布后回填 | 已实现基础版 | 支持 `--backfill-publish-id` 回填 `PUBLISHED_MANUAL/REJECTED_MANUAL`、帖子链接、发布时间、人工备注，并追加 JSONL。 |
-| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`UPLOAD_NOT_CONFIRMED` 等。 |
+| 平台发布器拆分 | 已实现基础版 | 新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和注册表，主流程通过 `get_publisher(platform)` 调度平台逻辑。 |
+| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败。 |
 | RPA 发布操作台 V1 | 已实现基础版 | 新增静态 HTML 生成器，可读取计划表、JSONL、汇总 CSV 和截图，展示任务状态、截图、错误、人工备注和回填命令；没有服务器和数据库依赖。 |
 | Tab 隔离 | 已实机验证 | 默认 `--tab-mode new`，每条任务新开 Tab；关闭窗口后重开、窗口已打开再次执行、TK 单条和 FB 单条草稿准备均确认不会覆盖原 Tab。 |
 | Tab 诊断 | 已实现基础版 | 支持 `--trace-tabs`、`--stop-after-connect`、`--close-task-tab` 和 `--clean-blank-tabs`，可排查同窗口多平台时的页面隔离。 |
@@ -60,7 +61,7 @@
 | Facebook 内容类型 | 只验证了 Page 图片帖。 | 后续还需要 FB 视频/Reels、快拍、个人主页测试入口。 |
 | Facebook 上传稳定性 | 当前 Page 图片帖多轮 `auto` 测试已通过；仍需其他 Page、视频/Reels 和更多图片样本。 | FB 页面不稳定时容易弹系统文件选择器，必须确保脚本不会卡死整组任务。 |
 | TikTok 多样本稳定性 | 已完成 3 条重复视频批量彩排；还需要真实多素材覆盖。 | 需要连续样本证明选择器和弹窗处理可靠。 |
-| 异常分类细化 | 基础错误码已完成；还没有按 TK/FB 页面截图和弹窗做更细的判定。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
+| 异常分类细化 | 平台级基础错误码已完成；还没有按具体页面截图、弹窗文案和账号状态做更细判定。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
 | 操作台人工确认 | 基础页面已能集中看截图、账号、客户、素材、文案和回填命令；还不能直接提交状态。 | 下一步要减少运营复制命令和手工执行的步骤。 |
 | 平台弹窗库 | 只处理少数安全弹窗。 | 平台 UI 会频繁弹新提示，需要记录和逐步补规则。 |
 
@@ -85,8 +86,8 @@
 
 | 优先级 | 任务 | 验收标准 |
 | --- | --- | --- |
-| P1-1 | 拆分 `TikTokPublisher` / `FacebookPublisher` | 平台选择器、弹窗处理、上传逻辑分开维护。 |
-| P1-2 | 细化平台异常分类 | 基础版已完成；下一步按 TK/FB 弹窗、账号验证、Page 选择错误和素材格式做更细分类。 |
+| P1-1 | 拆分 `TikTokPublisher` / `FacebookPublisher` | 已实现基础版。平台入口已通过注册表调度；后续把选择器、弹窗处理、上传逻辑继续下沉到各平台类。 |
+| P1-2 | 细化平台异常分类 | 基础版已完成。已补 TK/FB 上传失败、caption 失败、FB Page 权限、FB file chooser 超时、代理隧道失败等分类；下一步按真实弹窗截图继续补。 |
 | P1-3 | RPA 发布操作台 V1 | 已实现基础版。从 JSONL/计划表里查看每条任务的状态、截图、人工结果和帖子链接；支持复制/生成人工回填命令。 |
 | P1-4 | 增强截图命名规则 | 截图按 `publish_id/platform/account_key/timestamp` 自动命名，后续可按账号归档。 |
 | P1-5 | 支持 Facebook Reels/视频 | 至少验证 1 条视频上传到 FB Page，并停在发布前。 |
@@ -244,4 +245,4 @@ E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv
 
 ## 下一步
 
-下一步建议继续 `P1-1`、`P1-2` 和 `P1-5`：拆分 TK/FB 发布器，继续细化平台异常分类，并补 Facebook Page 视频/Reels 的发布前准备验证。操作台已经有只读基础版，后续再增强为能直接辅助状态回填和失败重试的确认工作台。
+下一步建议继续 `P1-5` 和操作台增强：先补 Facebook Page 视频/Reels 的发布前准备验证，再把只读操作台增强成能辅助状态回填、失败重试选择和账号健康备注的确认工作台。平台发布器和异常分类已有基础版，后续随真实弹窗和新内容类型继续迭代。
