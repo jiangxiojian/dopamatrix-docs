@@ -15,6 +15,7 @@
 - RPA 执行日志和发布汇总新增 `duration_seconds`，用于排查上传慢、页面等待和账号验证导致的耗时。
 - RPA 发布计划生成器新增 `--plan-repeat`，用于用同一素材生成多条唯一 `publish_id`/`attribution_token` 的内部彩排任务。
 - RPA 异常分类补充 `PROXY_CONNECTION_FAILED` 和 `BROWSER_TARGET_CLOSED`，并修复 `facebook` 平台名误触发 `face` 人脸验证判断的问题。
+- 将后续“简易报告页/人工确认台”统一命名为 `RPA 发布操作台 V1`，明确第一版读取本地计划表、JSONL、汇总 CSV 和截图。
 
 ### Verified
 
@@ -25,6 +26,7 @@
 - 验证没有 READY 且已有计划表时，一键模式会停止并提示运营把待跑行改为 `READY` 或显式重新生成计划表。
 - 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv` 完成 3 条 TikTok + 3 条 Facebook 同窗口顺序彩排：代理开启后 6 条均 `uploaded=true`、`caption_filled=true`、`PREPARED`，脚本未点击最终发布。
 - 首次批量彩排因代理未开启产生 6 条失败记录；开启代理后用 `--include-status FAILED,READY,PARTIAL` 成功重试，并导出 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv`。
+- 按“不发布”决定将 6 条批量彩排草稿统一人工回填为 `REJECTED_MANUAL`，避免误认为仍需人工发布。
 
 ## 2026-08-13
 
