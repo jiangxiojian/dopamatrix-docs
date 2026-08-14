@@ -19,16 +19,16 @@
 | 优先级 | 事项 | 状态 | 产出 |
 | --- | --- | --- | --- |
 | P0 | 定义 `publish_plan.csv` 模板并接入脚本 | 完成 | 支持 TK 视频和 FB 图片任务的统一发布计划。 |
-| P0 | 从投放包自动生成 `publish_plan.csv` | 完成基础版 | `--generate-plan` 可读取交付 CSV、素材目录和账号台账，默认视频生成 TK、图片生成 FB；一键模式可在安全条件满足时自动生成。 |
-| P0 | 实现批量队列和 `--limit` | 完成基础版 | 可按顺序处理 1-3 条任务，默认停在人工确认点。 |
+| P0 | 从投放包自动生成 `publish_plan.csv` | 完成基础版 | `--generate-plan` 可读取交付 CSV、素材目录和账号台账，默认视频生成 TK、图片生成 FB；支持 `--plan-repeat` 内部彩排。 |
+| P0 | 实现批量队列和 `--limit` | 完成基础版 | 已按顺序处理 6 条 TK/FB 彩排任务，默认停在人工确认点。 |
 | P0 | 实现 `publish_logs.jsonl` 汇总 | 完成基础版 | 每条任务都有可追踪的执行状态、截图、耗时和错误信息。 |
 | P0 | 增加计划表状态回写 | 完成基础版 | 显式 `--write-plan-status` 后，把执行状态、截图和错误写回计划表。 |
 | P0 | 增加人工发布后回填命令 | 完成基础版 | 人工发布或拒绝后，可回填帖子链接、发布时间和备注。 |
 | P0 | 导出 RPA 发布汇总 CSV | 完成基础版 | 从 JSONL 生成 `publish_summary.csv`，并从计划表补齐客户、产品、短链和归因字段。 |
-| P0 | 增加 RPA 异常分类 | 完成基础版 | 常见失败会写入稳定 `error_type`，例如 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`UPLOAD_NOT_CONFIRMED`。 |
-| P0 | 支持 TK + FB 同窗口顺序执行 | Tab 隔离完成，批量超时/上传策略待优化 | 关闭后重开、已打开再执行、TK 单条和 FB 单条均确认不会覆盖 Tab；连续计划执行还需优化单任务超时隔离，FB 需优先使用受控 file chooser。 |
+| P0 | 增加 RPA 异常分类 | 完成基础版 | 常见失败会写入稳定 `error_type`，例如 `BITBROWSER_CONNECTION`、`PROXY_CONNECTION_FAILED`、`UPLOAD_NOT_CONFIRMED`。 |
+| P0 | 支持 TK + FB 同窗口顺序执行 | 完成基础版 | 2026-08-14 已完成 3 条 TK + 3 条 FB 同窗口顺序彩排，均停在发布前且不覆盖 Tab。 |
 | P0 | 一键运行发布准备 | 完成基础版 | 直接运行脚本或双击 `.cmd`，自动发现 READY 计划；没有 READY 且只有一个安全投放包时先生成计划，再准备草稿。 |
-| P0 | 完成 TK/FB 各 3 条样本彩排 | 进行中 | 每条样本有截图、日志和人工处理结果。 |
+| P0 | 完成 TK/FB 各 3 条样本彩排 | 完成基础版 | 2026-08-14 同素材重复彩排 3 条 TK + 3 条 FB，均回写 `PREPARED`，有截图、JSONL 和汇总 CSV。 |
 | P1 | 自动采集发布后帖子链接和发布时间 | 未开始 | 不依赖人工复制时，`PUBLISHED_MANUAL` 也能追溯到帖子 URL。 |
 | P1 | 生成 RPA 发布简易报告页 | 未开始 | 在网页里查看每条任务状态、截图、帖子链接和人工结果。 |
 | P1 | 补 Facebook Page 视频/Reels 测试 | 未开始 | 视频上传和发布前人工确认链路。 |
@@ -44,8 +44,8 @@
 | 在发布计划中加入 `client_id`、`product_id`、`gene_version`、`attribution_token` | Phase 0 | 未开始 | 字段定义和生成规则 |
 | 实现交付目录/CSV 导入 | Phase 1 | 完成 | 能读取 `矩阵投放文案对照表.csv` 的导入流程 |
 | 建立 2-3 个 TikTok 账号和 2-3 个 Facebook Page 管理环境的账号台账 | Phase 1 | 进行中 | `platform_accounts` 试点数据 |
-| 跑通 3-5 条 TikTok 视频的脚本辅助发布 | Phase 1 | 进行中 | 已完成 1 条计划模式实机准备，测试草稿不发布并回填 `REJECTED_MANUAL`；还需补 2-4 条样本 |
-| 跑通 3-5 条 Facebook Page 图文帖的脚本辅助发布 | Phase 1 | 进行中 | 发布日志、截图、帖子链接、异常原因 |
+| 跑通 3-5 条 TikTok 视频的脚本辅助发布 | Phase 1 | 完成基础版 | 2026-08-14 同素材重复彩排 3 条 TK，均上传和填文案成功，停在发布前 |
+| 跑通 3-5 条 Facebook Page 图文帖的脚本辅助发布 | Phase 1 | 完成基础版 | 2026-08-14 同图片重复彩排 3 条 FB，均上传和填文案成功，停在发布前 |
 | 生成 Facebook 图文帖最小素材 | Phase 1 | 完成基础版 | 已有 FB 图片上传测试素材；后续要接真实产品图文模板 |
 | 人工录入或导入首批询盘 | Phase 3 | 未开始 | `leads` MVP 数据 |
 | 每条询盘绑定来源帖子、客户、产品和归因可信度 | Phase 3 | 未开始 | 可导出的客户线索表 |

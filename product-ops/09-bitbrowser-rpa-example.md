@@ -72,6 +72,14 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 如果交付包里只有视频，保持默认就只会生成 TikTok；如果目录里有图片但本批不想发 Facebook，可以传 `--plan-image-platforms none`。如果只想生成 Facebook 图片任务，可以传 `--plan-video-platforms none`。后续如果要测试 FB 视频/Reels，再显式改生成规则。
 
+内部彩排可以用同一个素材重复生成多条任务，用来验证批量队列、Tab 隔离、日志和状态回写：
+
+```powershell
+--plan-repeat 3
+```
+
+重复任务会共享同一个 `media_path`，但 `publish_id` 和 `attribution_token` 会保持不同。这个参数只建议用于不发布的内部测试，不建议直接用于真实投放。
+
 默认输出到投放包里的：
 
 ```text
@@ -265,6 +273,8 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 | --- | --- |
 | `BITBROWSER_CONNECTION` | 比特浏览器本地 API 不通或端口不对。 |
 | `BITBROWSER_PROFILE_OPEN` | 窗口打开失败，或没有返回 CDP 地址。 |
+| `PROXY_CONNECTION_FAILED` | 指纹窗口代理未开启、代理不可用，或平台页面无法通过代理访问。 |
+| `BROWSER_TARGET_CLOSED` | 页面、浏览器上下文或窗口在任务中途被关闭。 |
 | `MEDIA_PATH_INVALID` | 素材路径为空或文件不存在。 |
 | `PLAN_CONFIG_INVALID` | 发布计划或账号台账缺关键字段。 |
 | `ACCOUNT_SETTING_CHECK` | 平台要求确认账号级设置，例如 TikTok 自动内容检查。 |
@@ -376,22 +386,24 @@ post_url 自动识别
 | `POST /health` 是否可用 | 本机已验证，返回 `success=true` |
 | `/browser/open` 返回的是 `http`、`ws` 还是其他字段 | 已用真实 TK 测试窗口验证返回 `ws` |
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
-| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证两次：单条上传和 `publish_plan.csv` 计划模式均可上传成功；2026-08-13 计划表任务 `PUB-TK-TEST-001` 曾写回 `PREPARED`，后因测试草稿不发布已人工回填为 `REJECTED_MANUAL` |
-| TikTok caption 是否能自动填写 | 已验证两次：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
-| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证：`auto` 连续多轮通过受控 file chooser 上传图片、填文案、截图，停在发布前；普通运行无需传上传模式参数 |
+| TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证多轮：单条上传、`publish_plan.csv` 计划模式、以及 2026-08-14 三条重复视频批量彩排均可上传成功；脚本停在最终发布前 |
+| TikTok caption 是否能自动填写 | 已验证多轮：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
+| Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证：`auto` 连续多轮通过受控 file chooser 上传图片、填文案、截图，停在发布前；2026-08-14 三条重复图片批量彩排均完成 `uploaded=true`、`caption_filled=true` |
 | 关闭指纹窗口后由脚本重新打开是否会串 Tab | 已验证：`--stop-after-connect --trace-tabs` 看到默认/历史页面保留，脚本新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-cold-start.jsonl` |
 | 指纹窗口已打开时再执行脚本是否会串 Tab | 已验证：脚本不会复用已有 TK/FB 页面，会继续新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-already-open.jsonl` |
-| TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条和 FB 单条都在新 Tab 完成草稿准备，原页面未被覆盖；同一命令连续跑 TK+FB 时曾因 FB 等待超时中断，后续还需优化批量顺序稳定性 |
+| TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条、FB 单条、以及 2026-08-14 3 条 TK + 3 条 FB 同窗口顺序彩排均在独立任务 Tab 完成草稿准备，未点击最终发布 |
 | 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png` |
 | 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png` |
 | Facebook 文件选择器弹出风险 | 已确认：系统原生文件管理器会导致脚本等待超时；已移除裸点 fallback，后续只允许页面 input 或受控 file chooser |
 | Facebook `auto` 多轮稳定性 | 已验证：窗口已打开连续 3 次、`file-chooser` 直连 3 次、冷启动 1 次、完全不传上传参数 1 次均完成上传和文案填充 |
+| `--plan-repeat` 重复任务彩排 | 已验证：同一个视频生成 3 条 TK、同一张图片生成 3 条 FB；代理开启后 6 条均回写 `PREPARED`，汇总 CSV 行数为 6 |
+| 代理未开启时的失败记录 | 已验证：首次批量彩排因代理未开启出现 `ERR_PROXY_CONNECTION_FAILED`；后续分类器已补 `PROXY_CONNECTION_FAILED`，重试后成功 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
 
-1. 优化计划模式连续跑多平台时的超时和失败隔离，避免一条 FB 等待过长拖住整组任务。
+1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 把硬编码页面逻辑拆成 `TikTokPublisher` 和 `FacebookPublisher`。
 4. 细化异常分类，按 TK/FB 页面弹窗和截图补规则。

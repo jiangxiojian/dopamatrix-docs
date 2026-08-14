@@ -13,6 +13,8 @@
 - 发布计划生成器默认拒绝覆盖已有 `publish_plan.csv`，需要显式传 `--overwrite-plan` 或使用 `--output-plan-csv` 输出到临时文件。
 - 一键运行模式增强：找不到 READY 计划时，如果项目里只有一个安全投放包且尚未存在 `publish_plan.csv`，脚本会先自动生成计划表；已有计划表但没有 READY 时会停止并提示运营处理状态。
 - RPA 执行日志和发布汇总新增 `duration_seconds`，用于排查上传慢、页面等待和账号验证导致的耗时。
+- RPA 发布计划生成器新增 `--plan-repeat`，用于用同一素材生成多条唯一 `publish_id`/`attribution_token` 的内部彩排任务。
+- RPA 异常分类补充 `PROXY_CONNECTION_FAILED` 和 `BROWSER_TARGET_CLOSED`，并修复 `facebook` 平台名误触发 `face` 人脸验证判断的问题。
 
 ### Verified
 
@@ -21,6 +23,8 @@
 - 验证已有 `publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行结果和人工回填状态。
 - 使用临时投放包验证 `--one-click --print-plan`：没有现成计划表时可先自动生成 `publish_plan.csv`，再进入计划预览；测试任务已回填为 `REJECTED_MANUAL`，避免后续误跑。
 - 验证没有 READY 且已有计划表时，一键模式会停止并提示运营把待跑行改为 `READY` 或显式重新生成计划表。
+- 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv` 完成 3 条 TikTok + 3 条 Facebook 同窗口顺序彩排：代理开启后 6 条均 `uploaded=true`、`caption_filled=true`、`PREPARED`，脚本未点击最终发布。
+- 首次批量彩排因代理未开启产生 6 条失败记录；开启代理后用 `--include-status FAILED,READY,PARTIAL` 成功重试，并导出 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv`。
 
 ## 2026-08-13
 

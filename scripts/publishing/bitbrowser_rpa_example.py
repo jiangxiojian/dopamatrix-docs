@@ -1109,10 +1109,17 @@ def make_publish_id(platform: str, media_path: Path, sequence: int) -> str:
     return f"PUB-{platform_code(platform)}-{datetime.now():%Y%m%d}-{sequence:03d}-{digest}"
 
 
-def make_attribution_token(client_id: str, platform: str, media_path: Path, prefix_override: str = "") -> str:
+def make_attribution_token(
+    client_id: str,
+    platform: str,
+    media_path: Path,
+    prefix_override: str = "",
+    salt: str = "",
+) -> str:
     prefix_source = prefix_override or client_id
     prefix = re.sub(r"[^A-Za-z0-9]+", "", prefix_source).upper() or "AUTO"
-    return f"{prefix}-{platform_code(platform)}-{short_hash(str(media_path.resolve()))}"
+    hash_source = str(media_path.resolve()) if not salt else f"{media_path.resolve()}|{salt}"
+    return f"{prefix}-{platform_code(platform)}-{short_hash(hash_source)}"
 
 
 def account_entry_is_usable(entry: AccountLedgerEntry) -> bool:
@@ -1254,6 +1261,7 @@ def build_generated_plan_row(
         platform,
         media_path,
         args.plan_attribution_prefix,
+        str(row_index) if args.plan_repeat > 1 else "",
     )
     note = args.plan_note or "自动生成；脚本只准备草稿，最终发布由人工确认。"
     return {
@@ -1314,6 +1322,8 @@ def generate_publish_plan(args: argparse.Namespace) -> int:
     )
     video_platforms = parse_platform_list(args.plan_video_platforms, "--plan-video-platforms")
     image_platforms = parse_platform_list(args.plan_image_platforms, "--plan-image-platforms")
+    if args.plan_repeat < 1:
+        raise BitBrowserError("--plan-repeat must be 1 or greater.")
 
     records = load_delivery_records(delivery_csv)
     accounts_by_platform = usable_accounts_by_platform(load_account_ledger(account_ledger))
@@ -1329,22 +1339,23 @@ def generate_publish_plan(args: argparse.Namespace) -> int:
     ) -> None:
         for media_path, record in media_items:
             for platform in platforms:
-                account = choose_round_robin_account(accounts_by_platform, account_counters, platform)
-                if account is None:
-                    warnings.append(f"No usable account for {platform}; skipped {media_path.name}")
-                    continue
-                rows.append(
-                    build_generated_plan_row(
-                        args,
-                        output_path.parent,
-                        media_path,
-                        record,
-                        platform,
-                        content_type,
-                        len(rows) + 1,
-                        account,
+                for _ in range(args.plan_repeat):
+                    account = choose_round_robin_account(accounts_by_platform, account_counters, platform)
+                    if account is None:
+                        warnings.append(f"No usable account for {platform}; skipped {media_path.name}")
+                        continue
+                    rows.append(
+                        build_generated_plan_row(
+                            args,
+                            output_path.parent,
+                            media_path,
+                            record,
+                            platform,
+                            content_type,
+                            len(rows) + 1,
+                            account,
+                        )
                     )
-                )
 
     add_rows(videos, video_platforms, "video")
     add_rows(images, image_platforms, "image")
@@ -1650,7 +1661,7 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
 
 
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
-    haystack = f"{platform} {error_type} {error_message}".lower()
+    haystack = f"{error_type} {error_message}".lower()
     if "unsupported platform" in haystack:
         return "UNSUPPORTED_PLATFORM"
     if "media file does not exist" in haystack or "empty_media_path" in haystack:
@@ -1659,13 +1670,25 @@ def classify_error(error_type: str, error_message: str, platform: str = "") -> s
         return "PLAN_CONFIG_INVALID"
     if "playwright is not installed" in haystack:
         return "LOCAL_DEPENDENCY_MISSING"
+    if "err_proxy_connection_failed" in haystack or "proxy_connection_failed" in haystack:
+        return "PROXY_CONNECTION_FAILED"
     if "failed to establish a new connection" in haystack or "/health" in haystack:
+        return "BITBROWSER_CONNECTION"
+    if "connect_over_cdp" in haystack or "websocket error" in haystack or "econnrefused" in haystack:
         return "BITBROWSER_CONNECTION"
     if "failed to open the profile" in haystack or "did not return a cdp address" in haystack:
         return "BITBROWSER_PROFILE_OPEN"
+    if "target page" in haystack and "closed" in haystack:
+        return "BROWSER_TARGET_CLOSED"
     if "content checks" in haystack:
         return "ACCOUNT_SETTING_CHECK"
-    if "verification" in haystack or "captcha" in haystack or "face" in haystack or "identity" in haystack:
+    if (
+        "verification" in haystack
+        or "captcha" in haystack
+        or "identity" in haystack
+        or "人脸" in haystack
+        or re.search(r"\bface\s+(verification|check|scan|id)\b", haystack)
+    ):
         return "ACCOUNT_VERIFICATION"
     if "login" in haystack or "log in" in haystack or "sign in" in haystack:
         return "LOGIN_REQUIRED"
@@ -2320,6 +2343,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--plan-image-platforms",
         default="facebook",
         help="Comma-separated platforms generated for image files. Default: facebook. Use none to disable.",
+    )
+    parser.add_argument(
+        "--plan-repeat",
+        type=int,
+        default=1,
+        help="Generate this many tasks for each media/platform pair. Default: 1.",
     )
     parser.add_argument(
         "--plan-client-id",
