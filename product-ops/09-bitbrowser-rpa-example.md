@@ -339,7 +339,14 @@ python docs/scripts/publishing/rpa_operator_console.py `
   --output-html "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html"
 ```
 
-第一版操作台不需要服务器，也不改 DopaMatrix 主项目。它会展示任务状态、平台、账号、客户、产品、素材路径、截图预览、错误信息、人工备注，并为每条任务生成 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令。即使没有提前导出 `publish_summary.csv`，也会尝试直接从 `publish_logs.jsonl` 读取每个 `publish_id` 的最新记录。
+第一版操作台不需要服务器，也不改 DopaMatrix 主项目。它会展示任务状态、平台、账号、客户、产品、素材路径、追踪短链、截图预览、错误信息、人工备注，并为每条任务生成 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令。即使没有提前导出 `publish_summary.csv`，也会尝试直接从 `publish_logs.jsonl` 读取每个 `publish_id` 的最新记录。
+
+当前静态页已支持：
+
+- 按状态和平台组合筛选。
+- 搜索 `publish_id`、账号、客户、产品、素材路径和错误信息。
+- 一键复制“已发布回填”“不发布回填”和“失败/部分成功重试”命令。
+- 回填命令自动带上 `--log-jsonl`，避免只改计划表却漏写日志。
 
 ## 人工发布后回填
 
@@ -415,6 +422,7 @@ post_url 自动识别
 | 代理未开启时的失败记录 | 已验证：首次批量彩排因代理未开启出现 `ERR_PROXY_CONNECTION_FAILED`；后续分类器已补 `PROXY_CONNECTION_FAILED`，重试后成功 |
 | 平台发布器拆分 | 已静态验证：`get_publisher('tiktok')` 返回 `TikTokPublisher`，`get_publisher('facebook')` 返回 `FacebookPublisher`；FB `--print-plan` 仍可正常解析计划表 |
 | 平台异常分类细化 | 已静态验证：部分成功结果会按平台返回 `TIKTOK_UPLOAD_NOT_CONFIRMED`、`FACEBOOK_UPLOAD_NOT_CONFIRMED`、`TIKTOK_CAPTION_NOT_FILLED`、`FACEBOOK_CAPTION_NOT_FILLED` 等错误码 |
+| RPA 操作台增强 | 已静态验证：批量彩排目录生成的 HTML 包含 6 条任务、状态/平台筛选、搜索框、复制按钮、JSONL 回填参数和失败/部分成功重试命令 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
@@ -423,7 +431,7 @@ post_url 自动识别
 1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
 2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
 3. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
-4. 增强 `RPA 发布操作台 V1`：从只读 HTML 进化到能辅助状态回填、失败重试选择和账号健康备注。
+4. 继续增强 `RPA 发布操作台 V1`：从复制命令进化到能直接写回状态、记录账号健康备注和导出报告数据。
 
 ## 外部资料
 

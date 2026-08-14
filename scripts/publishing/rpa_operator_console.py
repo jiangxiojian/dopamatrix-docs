@@ -213,20 +213,51 @@ def status_class(status: str) -> str:
     return "wait"
 
 
-def build_backfill_command(row: dict[str, str], status: str) -> str:
+def append_log_arg(command: str, log_jsonl: str) -> str:
+    if not log_jsonl:
+        return command
+    return f'{command} --log-jsonl "{log_jsonl}"'
+
+
+def build_backfill_command(row: dict[str, str], status: str, log_jsonl: str = "") -> str:
     plan_csv = row.get("plan_csv", "")
     publish_id = row.get("publish_id", "")
-    return (
+    command = (
         "python docs\\scripts\\publishing\\bitbrowser_rpa_example.py "
         f"--plan-csv \"{plan_csv}\" "
         f"--backfill-publish-id {publish_id} "
         f"--backfill-status {status} "
+    )
+    if status == "PUBLISHED_MANUAL":
+        post_url = row.get("post_url", "") or "PASTE_POST_URL_HERE"
+        command += (
+            f"--post-url \"{post_url}\" "
+            "--published-at \"YYYY-MM-DDTHH:MM:SS\" "
+        )
+    command += (
         "--manual-operator operator "
         "--manual-note \"人工检查后回填\""
     )
+    return append_log_arg(command, log_jsonl)
 
 
-def render_rows(rows: list[dict[str, str]], plan_dir: Path) -> str:
+def build_retry_command(row: dict[str, str], log_jsonl: str = "") -> str:
+    plan_csv = row.get("plan_csv", "")
+    publish_id = row.get("publish_id", "")
+    command = (
+        "python docs\\scripts\\publishing\\bitbrowser_rpa_example.py "
+        f"--plan-csv \"{plan_csv}\" "
+        f"--only-publish-id {publish_id} "
+        "--include-status FAILED,PARTIAL,READY "
+        "--limit 1 "
+        "--write-plan-status "
+        "--continue-on-error "
+        "--content-check-action cancel"
+    )
+    return append_log_arg(command, log_jsonl)
+
+
+def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> str:
     cards: list[str] = []
     for row in rows:
         screenshot_uri = to_file_uri(row.get("screenshot", ""), plan_dir)
@@ -235,14 +266,32 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path) -> str:
             if screenshot_uri
             else '<div class="empty-shot">No screenshot</div>'
         )
-        publish_cmd = build_backfill_command(row, "PUBLISHED_MANUAL")
-        reject_cmd = build_backfill_command(row, "REJECTED_MANUAL")
+        publish_cmd = build_backfill_command(row, "PUBLISHED_MANUAL", log_jsonl)
+        reject_cmd = build_backfill_command(row, "REJECTED_MANUAL", log_jsonl)
+        retry_cmd = build_retry_command(row, log_jsonl)
         status = row.get("status", "")
         duration = row.get("duration_seconds", "")
         duration_text = f"{escape(duration)}s" if duration else ""
+        search_text = " ".join(
+            row.get(key, "")
+            for key in (
+                "publish_id",
+                "platform",
+                "account_key",
+                "profile_name",
+                "client_id",
+                "product_id",
+                "title",
+                "media_path",
+                "tracking_url",
+                "attribution_token",
+                "error_type",
+                "manual_note",
+            )
+        ).lower()
         cards.append(
             f"""
-            <article class="task" data-status="{escape(status.upper())}" data-platform="{escape(row.get('platform', '').lower())}">
+            <article class="task" data-status="{escape(status.upper())}" data-platform="{escape(row.get('platform', '').lower())}" data-search="{escape(search_text)}">
               <div class="shot">{screenshot}</div>
               <div class="task-main">
                 <div class="task-head">
@@ -274,9 +323,14 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path) -> str:
                 <details>
                   <summary>回填命令</summary>
                   <label>已发布</label>
+                  <button class="copy-btn" data-copy="{escape(publish_cmd)}">复制已发布回填</button>
                   <textarea readonly>{escape(publish_cmd)}</textarea>
                   <label>不发布</label>
+                  <button class="copy-btn" data-copy="{escape(reject_cmd)}">复制不发布回填</button>
                   <textarea readonly>{escape(reject_cmd)}</textarea>
+                  <label>失败/部分成功重试</label>
+                  <button class="copy-btn" data-copy="{escape(retry_cmd)}">复制重试命令</button>
+                  <textarea readonly>{escape(retry_cmd)}</textarea>
                 </details>
               </div>
             </article>
@@ -295,11 +349,16 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
     ]
     avg_duration = round(sum(avg_duration_values) / len(avg_duration_values), 2) if avg_duration_values else 0
     generated_at = datetime.now().isoformat(timespec="seconds")
-    body_rows = render_rows(rows, Path(args.plan_csv).expanduser().resolve().parent)
+    log_jsonl = source_info.get("log_jsonl", "")
+    body_rows = render_rows(rows, Path(args.plan_csv).expanduser().resolve().parent, log_jsonl)
     statuses = sorted(counts)
     status_buttons = "".join(
         f'<button data-filter-status="{escape(status)}">{escape(status)} ({counts[status]})</button>'
         for status in statuses
+    )
+    platform_buttons = "".join(
+        f'<button data-filter-platform="{escape(platform)}">{escape(platform)} ({platforms[platform]})</button>'
+        for platform in sorted(platforms)
     )
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -327,9 +386,12 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
     .stats {{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }}
     .stat {{ border: 1px solid var(--line); background: var(--panel); padding: 8px 10px; min-width: 128px; }}
     .stat strong {{ display: block; font-size: 20px; }}
-    .toolbar {{ display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 24px; border-bottom: 1px solid var(--line); }}
+    .toolbar {{ display: grid; gap: 10px; padding: 14px 24px; border-bottom: 1px solid var(--line); }}
+    .filter-row {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
+    .search {{ width: min(520px, 100%); border: 1px solid var(--line); padding: 9px 10px; font-size: 14px; }}
     button {{ border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 10px; cursor: pointer; }}
     button.active {{ border-color: #246bfd; background: var(--soft); color: #1849a9; }}
+    .copy-btn {{ margin: 6px 0; padding: 6px 8px; font-size: 12px; }}
     main {{ padding: 18px 24px 40px; display: grid; gap: 14px; }}
     .task {{ border: 1px solid var(--line); display: grid; grid-template-columns: 260px 1fr; min-height: 190px; background: #fff; }}
     .shot {{ background: #f2f5f7; border-right: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; }}
@@ -375,21 +437,85 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
     </div>
   </header>
   <nav class="toolbar">
-    <button class="active" data-filter-status="ALL">全部 ({len(rows)})</button>
-    {status_buttons}
+    <div class="filter-row">
+      <input class="search" id="search" placeholder="搜索 publish_id / 账号 / 客户 / 产品 / 素材 / 错误" autocomplete="off">
+    </div>
+    <div class="filter-row">
+      <button class="active" data-filter-status="ALL">全部状态 ({len(rows)})</button>
+      {status_buttons}
+    </div>
+    <div class="filter-row">
+      <button class="active" data-filter-platform="ALL">全部平台 ({len(rows)})</button>
+      {platform_buttons}
+    </div>
   </nav>
   <main>{body_rows}</main>
   <script>
-    const buttons = document.querySelectorAll('button[data-filter-status]');
+    const statusButtons = document.querySelectorAll('button[data-filter-status]');
+    const platformButtons = document.querySelectorAll('button[data-filter-platform]');
     const tasks = document.querySelectorAll('.task');
-    buttons.forEach((button) => {{
+    const search = document.querySelector('#search');
+    let activeStatus = 'ALL';
+    let activePlatform = 'ALL';
+
+    function applyFilters() {{
+      const term = (search.value || '').trim().toLowerCase();
+      tasks.forEach((task) => {{
+        const statusMatch = activeStatus === 'ALL' || task.dataset.status === activeStatus;
+        const platformMatch = activePlatform === 'ALL' || task.dataset.platform === activePlatform;
+        const searchMatch = !term || (task.dataset.search || '').includes(term);
+        task.style.display = statusMatch && platformMatch && searchMatch ? '' : 'none';
+      }});
+    }}
+
+    function activate(buttons, button) {{
+      buttons.forEach((item) => item.classList.remove('active'));
+      button.classList.add('active');
+    }}
+
+    statusButtons.forEach((button) => {{
       button.addEventListener('click', () => {{
-        buttons.forEach((item) => item.classList.remove('active'));
-        button.classList.add('active');
-        const status = button.dataset.filterStatus;
-        tasks.forEach((task) => {{
-          task.style.display = status === 'ALL' || task.dataset.status === status ? '' : 'none';
-        }});
+        activate(statusButtons, button);
+        activeStatus = button.dataset.filterStatus;
+        applyFilters();
+      }});
+    }});
+    platformButtons.forEach((button) => {{
+      button.addEventListener('click', () => {{
+        activate(platformButtons, button);
+        activePlatform = button.dataset.filterPlatform;
+        applyFilters();
+      }});
+    }});
+    search.addEventListener('input', applyFilters);
+
+    async function copyText(text) {{
+      if (navigator.clipboard && navigator.clipboard.writeText) {{
+        await navigator.clipboard.writeText(text);
+        return;
+      }}
+      const helper = document.createElement('textarea');
+      helper.value = text;
+      helper.style.position = 'fixed';
+      helper.style.left = '-9999px';
+      document.body.appendChild(helper);
+      helper.focus();
+      helper.select();
+      document.execCommand('copy');
+      helper.remove();
+    }}
+
+    document.querySelectorAll('.copy-btn').forEach((button) => {{
+      button.addEventListener('click', async () => {{
+        const label = button.textContent;
+        try {{
+          await copyText(button.dataset.copy || '');
+          button.textContent = '已复制';
+          setTimeout(() => {{ button.textContent = label; }}, 1200);
+        }} catch (error) {{
+          button.textContent = '复制失败';
+          setTimeout(() => {{ button.textContent = label; }}, 1600);
+        }}
       }});
     }});
   </script>
