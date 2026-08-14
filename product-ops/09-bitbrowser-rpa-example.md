@@ -18,7 +18,7 @@
 
 ## 一键运行
 
-把投放包放在项目目录中，并准备好 `publish_plan.csv`、`账号环境台账.csv` 和素材文件后，运营人员可以直接运行：
+把投放包放在项目目录中，并准备好 `账号环境台账.csv`、`矩阵投放文案对照表.csv` 和素材文件后，运营人员可以直接运行：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py
@@ -32,15 +32,16 @@ docs\scripts\publishing\run_publisher.cmd
 
 一键模式会自动：
 
-1. 找到项目中唯一包含 `READY` 任务的 `publish_plan.csv`。
-2. 读取账号环境台账，按 `account_key` 找到比特浏览器窗口。
-3. 自动打开或连接指纹环境。
-4. 每条任务新开独立 Tab。
-5. 自动上传媒体、填写文案、截图并写入 JSONL。
-6. 把结果状态写回计划表。
-7. 停在最终发布前，保留任务 Tab 给人工检查。
+1. 优先找到项目中唯一包含 `READY` 任务的 `publish_plan.csv`。
+2. 如果没有 READY 计划，且只有一个安全的投放包没有计划表，则先自动生成 `publish_plan.csv`。
+3. 读取账号环境台账，按 `account_key` 找到比特浏览器窗口。
+4. 自动打开或连接指纹环境。
+5. 每条任务新开独立 Tab。
+6. 自动上传媒体、填写文案、截图并写入 JSONL。
+7. 把结果状态写回计划表。
+8. 停在最终发布前，保留任务 Tab 给人工检查。
 
-一键模式不会点击 TikTok 发布或 Facebook 发布按钮。找不到计划表、找到多个含 `READY` 任务的计划表，或平台需要人工验证码/人脸验证时，脚本会停止并输出原因。
+一键模式不会点击 TikTok 发布或 Facebook 发布按钮。已有计划表但没有 `READY` 行时，脚本不会覆盖重建；需要运营把要跑的行改回 `READY`，或者显式用 `--generate-plan --overwrite-plan` 重新生成。找到多个含 `READY` 任务的计划表，或平台需要人工验证码/人脸验证时，脚本会停止并输出原因。
 
 ## 自动生成发布计划
 
@@ -256,7 +257,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
 ```
 
-`--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。
+`--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。真实执行记录会包含 `duration_seconds`，用于判断上传慢、页面卡住还是账号验证拖慢任务。
 
 当前 `error_type` 已做基础分类，常见值包括：
 
@@ -307,7 +308,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv"
 ```
 
-默认每个 `publish_id` 只保留最新状态，并会尽量从日志里的 `plan_csv` 反查补齐 `client_id`、`product_id`、`tracking_url`、`attribution_token`、素材路径、截图等字段。如果要排查历史过程，可以加：
+默认每个 `publish_id` 只保留最新状态，并会尽量从日志里的 `plan_csv` 反查补齐 `client_id`、`product_id`、`tracking_url`、`attribution_token`、素材路径、截图和 `duration_seconds` 等字段。如果要排查历史过程，可以加：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `

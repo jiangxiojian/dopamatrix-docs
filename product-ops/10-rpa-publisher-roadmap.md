@@ -31,18 +31,18 @@
 | 交付 CSV 读取 | 已实现基础版 | 按 `视频文件名` 匹配 `矩阵投放文案对照表.csv`。 |
 | 账号环境台账读取 | 已实现基础版 | 可按 `账号键`、平台或默认行读取窗口 ID。 |
 | `publish_plan.csv` 模板 | 已完成 | 已在投放包目录创建 TK 视频和 FB 图片两条 READY 样例。 |
-| `publish_plan.csv` 自动生成 | 已实现基础版 | `--generate-plan` 可从投放包、交付 CSV、账号台账和素材文件生成发布计划；默认视频生成 TK 任务、图片生成 FB 任务。 |
+| `publish_plan.csv` 自动生成 | 已实现基础版 | `--generate-plan` 可从投放包、交付 CSV、账号台账和素材文件生成发布计划；默认视频生成 TK 任务、图片生成 FB 任务；一键模式在安全条件满足时也能先生成计划。 |
 | 发布计划预览 | 已实现基础版 | 支持 `--plan-csv --limit --print-plan`，可不打开浏览器检查任务解析结果。 |
 | 批量队列读取 | 已实现基础版 | 支持读取 READY 行，并用 `--limit`、`--only-publish-id`、`--only-platform` 限制执行范围。 |
-| JSONL 汇总日志 | 已实现基础版 | 支持 `--log-jsonl` 追加 `PLANNED/PREPARED/FAILED` 记录。 |
-| 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链和归因字段。 |
+| JSONL 汇总日志 | 已实现基础版 | 支持 `--log-jsonl` 追加 `PLANNED/PREPARED/FAILED` 记录；真实执行会记录 `duration_seconds`。 |
+| 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链、归因字段和执行耗时。 |
 | 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
 | 人工发布后回填 | 已实现基础版 | 支持 `--backfill-publish-id` 回填 `PUBLISHED_MANUAL/REJECTED_MANUAL`、帖子链接、发布时间、人工备注，并追加 JSONL。 |
 | 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`UPLOAD_NOT_CONFIRMED` 等。 |
 | Tab 隔离 | 已实机验证 | 默认 `--tab-mode new`，每条任务新开 Tab；关闭窗口后重开、窗口已打开再次执行、TK 单条和 FB 单条草稿准备均确认不会覆盖原 Tab。 |
 | Tab 诊断 | 已实现基础版 | 支持 `--trace-tabs`、`--stop-after-connect`、`--close-task-tab` 和 `--clean-blank-tabs`，可排查同窗口多平台时的页面隔离。 |
 | Facebook 上传策略 | 已实机验证基础版 | 支持 `input-only/auto/file-chooser`；默认 `auto`，多轮实测通过受控 file chooser 完成上传，且不再裸点按钮。 |
-| 一键运行入口 | 已实机验证基础版 | 直接运行脚本或双击 `run_publisher.cmd`，自动发现 READY 计划、读取台账、写日志/状态并停在人工发布前。 |
+| 一键运行入口 | 已实机验证基础版 | 直接运行脚本或双击 `run_publisher.cmd`，自动发现 READY 计划；没有 READY 且只有一个安全投放包时会先生成计划，再读取台账、写日志/状态并停在人工发布前。 |
 | 单次截图 | 已实现 | 每次 RPA 可保存发布前截图。 |
 | 单次 JSON 日志 | 已实现基础版 | `--log-json` 可记录账号、素材、截图和执行结果。 |
 | 计划预览 | 已实现 | `--print-plan` 可只解析台账/素材/文案，不打开浏览器。 |
@@ -74,11 +74,11 @@
 | P0-3 | 实现结果日志汇总 | 已实现基础版。每条任务可写入 JSONL，记录 `PLANNED/PREPARED/FAILED` 等状态。 |
 | P0-4 | 增加计划表状态回写 | 已实现基础版。显式 `--write-plan-status` 后写回执行状态、截图和错误信息。 |
 | P0-5 | 增加发布后手工回填命令 | 已实现基础版。人工发布或拒绝后可回填帖子 URL、发布时间和备注。 |
-| P0-6 | 导出发布汇总 CSV | 已实现基础版。可从 JSONL 生成运营可读 CSV，并补齐计划表里的归因字段。 |
+| P0-6 | 导出发布汇总 CSV | 已实现基础版。可从 JSONL 生成运营可读 CSV，并补齐计划表里的归因字段和执行耗时。 |
 | P0-7 | 支持同一窗口跨平台顺序执行 | Tab 隔离已通过实机验证；下一步处理连续计划执行里的单任务超时隔离。 |
 | P0-8 | 完成 TK/FB 各 3 条样本彩排 | 每条都有截图、日志、人工确认结果和异常记录。 |
-| P0-9 | 一键运行模式 | 已完成基础版。直接运行脚本即可自动发现 READY 计划、准备草稿、写日志和状态，停在人工确认点。 |
-| P0-10 | 从投放包生成 `publish_plan.csv` | 已实现基础版。读取 `矩阵投放文案对照表.csv`、素材目录和账号台账，自动生成 READY 任务；默认不覆盖已有计划表。 |
+| P0-9 | 一键运行模式 | 已完成基础版。直接运行脚本即可自动发现 READY 计划；安全条件满足时可先生成计划，再准备草稿、写日志和状态，停在人工确认点。 |
+| P0-10 | 从投放包生成 `publish_plan.csv` | 已实现基础版。读取 `矩阵投放文案对照表.csv`、素材目录和账号台账，自动生成 READY 任务；默认不覆盖已有计划表，一键模式可复用该生成器。 |
 
 ### P1：提高稳定性和可运营性
 
@@ -175,6 +175,7 @@ publish_logs.jsonl
   "screenshot": "...",
   "error_type": "",
   "error_message": "",
+  "duration_seconds": 68.32,
   "started_at": "2026-08-12T16:00:00",
   "finished_at": "2026-08-12T16:01:00"
 }
@@ -188,7 +189,7 @@ publish_logs.jsonl
 E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv
 ```
 
-这个 CSV 是报告网页前的过渡产物，不替代后续数据库和看板。
+这个 CSV 是报告网页前的过渡产物，不替代后续数据库和看板。真实执行记录会带 `duration_seconds`，后续可用来识别慢上传、平台等待超时和账号验证造成的阻塞。
 
 ## 状态维护规则
 

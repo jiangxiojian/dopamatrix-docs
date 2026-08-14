@@ -11,12 +11,16 @@
 - RPA 示例脚本新增 `--generate-plan`，可从投放包目录、`矩阵投放文案对照表.csv`、`账号环境台账.csv` 和素材文件自动生成 `publish_plan.csv`。
 - 发布计划生成器新增 `--plan-video-platforms`、`--plan-image-platforms`、`--plan-client-id`、`--plan-product-id`、`--plan-scheduled-start`、`--plan-interval-minutes` 等参数；默认视频生成 TikTok 任务、图片生成 Facebook 任务。
 - 发布计划生成器默认拒绝覆盖已有 `publish_plan.csv`，需要显式传 `--overwrite-plan` 或使用 `--output-plan-csv` 输出到临时文件。
+- 一键运行模式增强：找不到 READY 计划时，如果项目里只有一个安全投放包且尚未存在 `publish_plan.csv`，脚本会先自动生成计划表；已有计划表但没有 READY 时会停止并提示运营处理状态。
+- RPA 执行日志和发布汇总新增 `duration_seconds`，用于排查上传慢、页面等待和账号验证导致的耗时。
 
 ### Verified
 
 - 使用真实投放包生成 `E:\project\dopaMatrix\output\publish-rpa\generated-plan-test.csv`，当前包内只有视频素材，因此生成 1 条 TikTok READY 任务。
 - 对生成的计划表执行 `--print-plan --limit 1`，确认可正确解析素材路径、账号台账、caption、追踪短链和归因 token。
 - 验证已有 `publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行结果和人工回填状态。
+- 使用临时投放包验证 `--one-click --print-plan`：没有现成计划表时可先自动生成 `publish_plan.csv`，再进入计划预览；测试任务已回填为 `REJECTED_MANUAL`，避免后续误跑。
+- 验证没有 READY 且已有计划表时，一键模式会停止并提示运营把待跑行改为 `READY` 或显式重新生成计划表。
 
 ## 2026-08-13
 

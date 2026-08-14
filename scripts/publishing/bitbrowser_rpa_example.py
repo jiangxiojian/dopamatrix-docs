@@ -131,6 +131,7 @@ SUMMARY_FIELDS = [
     "screenshot",
     "error_type",
     "error_message",
+    "duration_seconds",
     "started_at",
     "finished_at",
     "plan_csv",
@@ -191,6 +192,25 @@ class BitBrowserError(RuntimeError):
     pass
 
 
+class NoReadyPublishPlanError(BitBrowserError):
+    def __init__(self, candidates: list[Path]) -> None:
+        self.candidates = candidates
+        searched = "\n".join(f"  - {path}" for path in candidates) or "  (none)"
+        super().__init__(
+            "One-click mode could not find a publish_plan.csv with READY rows.\n"
+            f"Searched:\n{searched}"
+        )
+
+
+@dataclass
+class DeliveryPackageCandidate:
+    delivery_dir: Path
+    delivery_csv: Path
+    account_ledger: Path
+    plan_path: Path
+    media_count: int
+
+
 def project_root() -> Path:
     script_path = Path(__file__).resolve()
     try:
@@ -199,28 +219,38 @@ def project_root() -> Path:
         return Path.cwd().resolve()
 
 
-def discover_publish_plan() -> Path:
+def discovery_roots() -> list[Path]:
     roots: list[Path] = []
     for root in (Path.cwd().resolve(), project_root()):
         if root not in roots:
             roots.append(root)
+    return roots
 
-    candidates: list[Path] = []
+
+def path_has_ignored_parts(path: Path) -> bool:
     ignored_parts = {".git", "node_modules", "__pycache__"}
-    for root in roots:
+    return bool(ignored_parts.intersection(path.parts))
+
+
+def find_publish_plan_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    for root in discovery_roots():
         if root.is_file() and root.name == DEFAULT_PLAN_FILENAME:
             candidates.append(root)
             continue
         if not root.is_dir():
             continue
         for path in root.rglob(DEFAULT_PLAN_FILENAME):
-            if ignored_parts.intersection(path.parts):
+            if path_has_ignored_parts(path):
                 continue
             if path.is_file():
                 resolved = path.resolve()
                 if resolved not in candidates:
                     candidates.append(resolved)
+    return candidates
 
+
+def ready_publish_plan_candidates(candidates: list[Path]) -> list[tuple[Path, int]]:
     ready_candidates: list[tuple[Path, int]] = []
     for candidate in candidates:
         try:
@@ -229,15 +259,16 @@ def discover_publish_plan() -> Path:
             continue
         if ready_count:
             ready_candidates.append((candidate, ready_count))
+    return ready_candidates
 
+
+def discover_publish_plan() -> Path:
+    candidates = find_publish_plan_candidates()
+    ready_candidates = ready_publish_plan_candidates(candidates)
     if len(ready_candidates) == 1:
         return ready_candidates[0][0]
     if not ready_candidates:
-        searched = "\n".join(f"  - {path}" for path in candidates) or "  (none)"
-        raise SystemExit(
-            "One-click mode could not find a publish_plan.csv with READY rows.\n"
-            f"Searched:\n{searched}"
-        )
+        raise NoReadyPublishPlanError(candidates)
 
     details = "\n".join(
         f"  - {path} ({ready_count} READY rows)"
@@ -250,13 +281,83 @@ def discover_publish_plan() -> Path:
     )
 
 
+def find_one_click_generation_candidates() -> list[DeliveryPackageCandidate]:
+    candidates: list[DeliveryPackageCandidate] = []
+    for root in discovery_roots():
+        if not root.is_dir():
+            continue
+        for delivery_csv in root.rglob(DEFAULT_DELIVERY_CSV_FILENAME):
+            if path_has_ignored_parts(delivery_csv) or not delivery_csv.is_file():
+                continue
+            delivery_dir = delivery_csv.parent.resolve()
+            account_ledger = delivery_dir / DEFAULT_ACCOUNT_LEDGER_FILENAME
+            plan_path = delivery_dir / DEFAULT_PLAN_FILENAME
+            if not account_ledger.is_file() or plan_path.exists():
+                continue
+            media_count = len(scan_media_files(delivery_dir, VIDEO_EXTENSIONS | IMAGE_EXTENSIONS))
+            if media_count == 0:
+                continue
+            candidate = DeliveryPackageCandidate(
+                delivery_dir=delivery_dir,
+                delivery_csv=delivery_csv.resolve(),
+                account_ledger=account_ledger.resolve(),
+                plan_path=plan_path.resolve(),
+                media_count=media_count,
+            )
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+def generate_one_click_publish_plan(
+    args: argparse.Namespace,
+    existing_plan_candidates: list[Path],
+) -> Path:
+    candidates = find_one_click_generation_candidates()
+    if len(candidates) == 1:
+        candidate = candidates[0]
+        generation_args = argparse.Namespace(**vars(args))
+        generation_args.delivery_dir = str(candidate.delivery_dir)
+        generation_args.delivery_csv = str(candidate.delivery_csv)
+        generation_args.account_ledger = str(candidate.account_ledger)
+        generation_args.output_plan_csv = str(candidate.plan_path)
+        generation_args.overwrite_plan = False
+        generate_publish_plan(generation_args)
+        print(f"One-click generated plan from delivery package: {candidate.delivery_dir}")
+        return candidate.plan_path
+
+    searched = "\n".join(f"  - {path}" for path in existing_plan_candidates) or "  (none)"
+    if not candidates:
+        raise BitBrowserError(
+            "One-click mode could not find READY tasks, and no safe delivery package "
+            "was available for automatic plan generation.\n"
+            f"Existing publish_plan.csv files:\n{searched}\n"
+            "If a publish_plan.csv already exists, mark the rows that should run as READY, "
+            "or regenerate it explicitly with --generate-plan --overwrite-plan."
+        )
+
+    details = "\n".join(
+        f"  - {candidate.delivery_dir} ({candidate.media_count} media files)"
+        for candidate in candidates
+    )
+    raise BitBrowserError(
+        "One-click mode found multiple delivery packages that could generate publish_plan.csv. "
+        "Pass --delivery-dir with --generate-plan first, or leave only one active delivery package.\n"
+        f"Candidates:\n{details}"
+    )
+
+
 def configure_one_click(args: argparse.Namespace) -> argparse.Namespace:
     if args.plan_csv:
         plan_path = Path(args.plan_csv).expanduser().resolve()
     else:
-        plan_path = discover_publish_plan()
+        try:
+            plan_path = discover_publish_plan()
+        except NoReadyPublishPlanError as exc:
+            plan_path = generate_one_click_publish_plan(args, exc.candidates)
 
     args.plan_csv = str(plan_path)
+    args.generate_plan = False
     args.include_status = "READY"
     args.continue_on_error = True
     args.write_plan_status = True
@@ -1581,6 +1682,16 @@ def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
     return "", ""
 
 
+def duration_seconds_since(started_at: str) -> float | None:
+    if not started_at:
+        return None
+    try:
+        started = datetime.fromisoformat(started_at)
+    except ValueError:
+        return None
+    return round((datetime.now() - started).total_seconds(), 2)
+
+
 def append_plan_failure(
     args: argparse.Namespace,
     plan_path: Path,
@@ -1611,6 +1722,7 @@ def append_plan_failure(
             "error_type": classify_error(error_type, error_message, entry.platform),
             "error_message": error_message,
             "finished_at": datetime.now().isoformat(timespec="seconds"),
+            "duration_seconds": duration_seconds_since(started_at),
         },
     }
     if args.log_jsonl:
@@ -1633,6 +1745,7 @@ def write_failure_logs(
         "raw_error_type": error_type,
         "error_message": error_message,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
+        "duration_seconds": duration_seconds_since(str(plan.get("started_at", ""))),
     }
     if page is not None and screenshot_path is not None:
         try:
@@ -1785,6 +1898,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "CONNECTED",
                 "tab_mode": args.tab_mode,
                 "finished_at": datetime.now().isoformat(timespec="seconds"),
+                "duration_seconds": duration_seconds_since(run_started_at),
             }
             if args.trace_tabs and browser is not None:
                 result["tab_trace_after_connect"] = snapshot_tabs(
@@ -1850,6 +1964,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
+        result["duration_seconds"] = duration_seconds_since(run_started_at)
         log_payload = {
             "plan": plan,
             "bitbrowser": {
