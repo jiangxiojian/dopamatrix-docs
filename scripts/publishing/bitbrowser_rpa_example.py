@@ -41,12 +41,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -62,10 +63,48 @@ DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
 DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
 DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 DEFAULT_PLAN_FILENAME = "publish_plan.csv"
+DEFAULT_DELIVERY_CSV_FILENAME = "矩阵投放文案对照表.csv"
+DEFAULT_ACCOUNT_LEDGER_FILENAME = "账号环境台账.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
 FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
+SUPPORTED_PLATFORMS = ("tiktok", "facebook")
+PLATFORM_CODES = {
+    "tiktok": "TK",
+    "facebook": "FB",
+}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+PUBLISH_PLAN_FIELDS = [
+    "publish_id",
+    "client_id",
+    "product_id",
+    "platform",
+    "content_type",
+    "account_key",
+    "browser_profile_id",
+    "media_path",
+    "title",
+    "caption",
+    "hashtags",
+    "tracking_url",
+    "attribution_token",
+    "scheduled_at",
+    "status",
+    "operator",
+    "note",
+    "last_result_status",
+    "last_result_at",
+    "result_screenshot",
+    "error_type",
+    "error_message",
+    "post_url",
+    "published_at",
+    "manual_operator",
+    "manual_checked_at",
+    "manual_note",
+]
 SUMMARY_FIELDS = [
     "publish_id",
     "client_id",
@@ -715,6 +754,28 @@ def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
         return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
 
 
+def load_delivery_records(csv_path: Path) -> list[DeliveryRecord]:
+    rows = _read_csv_rows(csv_path)
+    if not rows:
+        raise BitBrowserError(f"Delivery CSV is empty: {csv_path}")
+
+    records: list[DeliveryRecord] = []
+    for row in rows:
+        video_filename = _first_nonempty(row, "视频文件名", "video_filename", "media", "media_name")
+        records.append(
+            DeliveryRecord(
+                video_filename=video_filename,
+                social_title=_first_nonempty(row, "社交平台标题", "social_title", "title"),
+                emotional_description=_first_nonempty(row, "情绪化描述", "social_caption", "caption", "description"),
+                hashtags=_first_nonempty(row, "黄金标签", "social_hashtags", "hashtags", "tag"),
+                tracking_link=_first_nonempty(row, "追踪短链接", "tracking_link", "url", "link"),
+                source_csv=str(csv_path),
+                raw=row,
+            )
+        )
+    return records
+
+
 def _discover_file_upwards(start_dir: Path, candidate_names: tuple[str, ...]) -> Path | None:
     for directory in [start_dir, *start_dir.parents]:
         for candidate_name in candidate_names:
@@ -732,40 +793,31 @@ def resolve_path_maybe_relative(path_text: str, base_dir: Path) -> Path:
 
 
 def load_delivery_record(csv_path: Path, media_path: Path) -> DeliveryRecord:
-    rows = _read_csv_rows(csv_path)
-    if not rows:
-        raise BitBrowserError(f"Delivery CSV is empty: {csv_path}")
+    records = load_delivery_records(csv_path)
 
     media_name = media_path.name
     matched = None
-    for row in rows:
-        row_media_name = _first_nonempty(row, "视频文件名", "video_filename", "media", "media_name")
-        if row_media_name == media_name:
-            matched = row
+    for record in records:
+        if record.video_filename == media_name:
+            matched = record
             break
 
     if matched is None:
-        if len(rows) == 1:
-            matched = rows[0]
+        if len(records) == 1:
+            matched = records[0]
         else:
             available = ", ".join(
-                _first_nonempty(row, "视频文件名", "video_filename", "media", "media_name") or "<empty>"
-                for row in rows[:10]
+                record.video_filename or "<empty>"
+                for record in records[:10]
             )
             raise BitBrowserError(
                 "No delivery CSV row matched the media filename. "
                 f"media={media_name}, csv={csv_path}, sample_rows={available}"
             )
 
-    return DeliveryRecord(
-        video_filename=_first_nonempty(matched, "视频文件名", "video_filename", "media", "media_name") or media_name,
-        social_title=_first_nonempty(matched, "社交平台标题", "social_title", "title"),
-        emotional_description=_first_nonempty(matched, "情绪化描述", "social_caption", "caption", "description"),
-        hashtags=_first_nonempty(matched, "黄金标签", "social_hashtags", "hashtags", "tag"),
-        tracking_link=_first_nonempty(matched, "追踪短链接", "tracking_link", "url", "link"),
-        source_csv=str(csv_path),
-        raw=matched,
-    )
+    if not matched.video_filename:
+        matched.video_filename = media_name
+    return matched
 
 
 def load_account_ledger(csv_path: Path) -> list[AccountLedgerEntry]:
@@ -866,7 +918,7 @@ def resolve_delivery_csv(media_path: Path, explicit_csv: str | None) -> Path | N
         return Path(explicit_csv).expanduser().resolve()
     return _discover_file_upwards(
         media_path.parent,
-        ("矩阵投放文案对照表.csv", "delivery.csv", "publish_plan.csv"),
+        (DEFAULT_DELIVERY_CSV_FILENAME, "delivery.csv", "publish_plan.csv"),
     )
 
 
@@ -875,7 +927,7 @@ def resolve_account_ledger(media_path: Path, explicit_csv: str | None) -> Path |
         return Path(explicit_csv).expanduser().resolve()
     return _discover_file_upwards(
         media_path.parent,
-        ("账号环境台账.csv", "account-ledger.csv", "account_ledger.csv"),
+        (DEFAULT_ACCOUNT_LEDGER_FILENAME, "account-ledger.csv", "account_ledger.csv"),
     )
 
 
@@ -889,11 +941,327 @@ def resolve_account_ledger_for_task(
     if plan_dir is not None:
         found = _discover_file_upwards(
             plan_dir,
-            ("账号环境台账.csv", "account-ledger.csv", "account_ledger.csv"),
+            (DEFAULT_ACCOUNT_LEDGER_FILENAME, "account-ledger.csv", "account_ledger.csv"),
         )
         if found is not None:
             return found
     return resolve_account_ledger(media_path, explicit_csv)
+
+
+def parse_platform_list(value: str, option_name: str) -> list[str]:
+    if not value or value.strip().lower() in {"none", "off", "-"}:
+        return []
+    platforms: list[str] = []
+    for item in value.split(","):
+        platform = item.strip().lower()
+        if not platform:
+            continue
+        if platform not in SUPPORTED_PLATFORMS:
+            raise BitBrowserError(
+                f"Unsupported platform in {option_name}: {platform}. "
+                f"Supported: {', '.join(SUPPORTED_PLATFORMS)}"
+            )
+        if platform not in platforms:
+            platforms.append(platform)
+    return platforms
+
+
+def scan_media_files(delivery_dir: Path, extensions: set[str]) -> list[Path]:
+    ignored_dirs = {".git", "__pycache__", "node_modules"}
+    files: list[Path] = []
+    for path in delivery_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if ignored_dirs.intersection(path.parts):
+            continue
+        if path.suffix.lower() in extensions:
+            files.append(path.resolve())
+    return sorted(files, key=lambda item: str(item).lower())
+
+
+def find_media_by_name(delivery_dir: Path, media_name: str, extensions: set[str]) -> Path | None:
+    if not media_name:
+        return None
+    for path in scan_media_files(delivery_dir, extensions):
+        if path.name == media_name:
+            return path
+    return None
+
+
+def relative_media_path_for_plan(media_path: Path, base_dir: Path) -> str:
+    try:
+        return media_path.resolve().relative_to(base_dir.resolve()).as_posix()
+    except ValueError:
+        return str(media_path.resolve())
+
+
+def short_hash(value: str, length: int = 6) -> str:
+    return hashlib.sha1(value.encode("utf-8", errors="ignore")).hexdigest()[:length].upper()
+
+
+def platform_code(platform: str) -> str:
+    return PLATFORM_CODES.get(platform, platform[:2].upper())
+
+
+def make_publish_id(platform: str, media_path: Path, sequence: int) -> str:
+    digest = short_hash(f"{platform}|{media_path.resolve()}")
+    return f"PUB-{platform_code(platform)}-{datetime.now():%Y%m%d}-{sequence:03d}-{digest}"
+
+
+def make_attribution_token(client_id: str, platform: str, media_path: Path, prefix_override: str = "") -> str:
+    prefix_source = prefix_override or client_id
+    prefix = re.sub(r"[^A-Za-z0-9]+", "", prefix_source).upper() or "AUTO"
+    return f"{prefix}-{platform_code(platform)}-{short_hash(str(media_path.resolve()))}"
+
+
+def account_entry_is_usable(entry: AccountLedgerEntry) -> bool:
+    if not entry.raw:
+        return True
+    status = (
+        entry.raw.get("状态")
+        or entry.raw.get("status")
+        or entry.raw.get("账号状态")
+        or ""
+    ).strip().lower()
+    if not status:
+        return True
+    blocked_words = ("封", "禁用", "停用", "不可用", "失效", "未登录", "blocked", "disabled", "invalid")
+    return not any(word in status for word in blocked_words)
+
+
+def account_entry_sort_key(entry: AccountLedgerEntry) -> tuple[int, str]:
+    is_default = ""
+    if entry.raw:
+        is_default = entry.raw.get("默认") or entry.raw.get("default") or ""
+    return (0 if _truthy(is_default) else 1, entry.account_key or entry.profile_id)
+
+
+def usable_accounts_by_platform(entries: list[AccountLedgerEntry]) -> dict[str, list[AccountLedgerEntry]]:
+    result: dict[str, list[AccountLedgerEntry]] = {}
+    for platform in SUPPORTED_PLATFORMS:
+        accounts = [
+            entry
+            for entry in entries
+            if entry.platform.strip().lower() == platform and account_entry_is_usable(entry)
+        ]
+        result[platform] = sorted(accounts, key=account_entry_sort_key)
+    return result
+
+
+def choose_round_robin_account(
+    accounts_by_platform: dict[str, list[AccountLedgerEntry]],
+    counters: dict[str, int],
+    platform: str,
+) -> AccountLedgerEntry | None:
+    accounts = accounts_by_platform.get(platform) or []
+    if not accounts:
+        return None
+    index = counters.get(platform, 0)
+    counters[platform] = index + 1
+    return accounts[index % len(accounts)]
+
+
+def scheduled_at_for_row(args: argparse.Namespace, row_index: int) -> str:
+    if not args.plan_scheduled_start:
+        return ""
+    try:
+        start = datetime.fromisoformat(args.plan_scheduled_start)
+    except ValueError as exc:
+        raise BitBrowserError(
+            "--plan-scheduled-start must be an ISO time, e.g. 2026-08-14T10:00:00"
+        ) from exc
+    return (start + timedelta(minutes=args.plan_interval_minutes * (row_index - 1))).isoformat(timespec="minutes")
+
+
+def resolve_delivery_dir(args: argparse.Namespace) -> Path:
+    if args.delivery_dir:
+        return Path(args.delivery_dir).expanduser().resolve()
+    if args.delivery_csv:
+        return Path(args.delivery_csv).expanduser().resolve().parent
+    return Path.cwd().resolve()
+
+
+def resolve_delivery_csv_for_generation(delivery_dir: Path, explicit_csv: str | None) -> Path:
+    if explicit_csv:
+        path = Path(explicit_csv).expanduser().resolve()
+    else:
+        path = delivery_dir / DEFAULT_DELIVERY_CSV_FILENAME
+    if not path.is_file():
+        raise BitBrowserError(f"Delivery CSV not found: {path}")
+    return path
+
+
+def resolve_account_ledger_for_generation(delivery_dir: Path, explicit_csv: str | None) -> Path:
+    if explicit_csv:
+        path = Path(explicit_csv).expanduser().resolve()
+    else:
+        path = delivery_dir / DEFAULT_ACCOUNT_LEDGER_FILENAME
+    if not path.is_file():
+        raise BitBrowserError(f"Account ledger CSV not found: {path}")
+    return path
+
+
+def record_for_media(records: list[DeliveryRecord], media_path: Path) -> DeliveryRecord:
+    for record in records:
+        if record.video_filename == media_path.name:
+            return record
+    if len(records) == 1:
+        return records[0]
+    return DeliveryRecord(video_filename=media_path.name)
+
+
+def collect_generation_media(
+    delivery_dir: Path,
+    records: list[DeliveryRecord],
+    warnings: list[str],
+) -> tuple[list[tuple[Path, DeliveryRecord]], list[tuple[Path, DeliveryRecord]]]:
+    videos: list[tuple[Path, DeliveryRecord]] = []
+    used_video_paths: set[Path] = set()
+    for record in records:
+        media_path = find_media_by_name(delivery_dir, record.video_filename, VIDEO_EXTENSIONS)
+        if media_path is None:
+            if record.video_filename:
+                warnings.append(f"Delivery CSV row has no matching video file: {record.video_filename}")
+            continue
+        videos.append((media_path, record))
+        used_video_paths.add(media_path)
+
+    for media_path in scan_media_files(delivery_dir, VIDEO_EXTENSIONS):
+        if media_path not in used_video_paths:
+            videos.append((media_path, record_for_media(records, media_path)))
+
+    images = [
+        (media_path, record_for_media(records, media_path))
+        for media_path in scan_media_files(delivery_dir, IMAGE_EXTENSIONS)
+    ]
+    return videos, images
+
+
+def build_generated_plan_row(
+    args: argparse.Namespace,
+    plan_base_dir: Path,
+    media_path: Path,
+    record: DeliveryRecord,
+    platform: str,
+    content_type: str,
+    row_index: int,
+    account: AccountLedgerEntry,
+) -> dict[str, str]:
+    tracking_url = record.tracking_link
+    attribution_token = make_attribution_token(
+        args.plan_client_id,
+        platform,
+        media_path,
+        args.plan_attribution_prefix,
+    )
+    note = args.plan_note or "自动生成；脚本只准备草稿，最终发布由人工确认。"
+    return {
+        "publish_id": make_publish_id(platform, media_path, row_index),
+        "client_id": args.plan_client_id or "",
+        "product_id": args.plan_product_id or "",
+        "platform": platform,
+        "content_type": content_type,
+        "account_key": account.account_key,
+        "browser_profile_id": "",
+        "media_path": relative_media_path_for_plan(media_path, plan_base_dir),
+        "title": record.social_title,
+        "caption": record.emotional_description,
+        "hashtags": record.hashtags,
+        "tracking_url": tracking_url,
+        "attribution_token": attribution_token,
+        "scheduled_at": scheduled_at_for_row(args, row_index),
+        "status": args.plan_initial_status,
+        "operator": args.plan_operator or "",
+        "note": note,
+        "last_result_status": "",
+        "last_result_at": "",
+        "result_screenshot": "",
+        "error_type": "",
+        "error_message": "",
+        "post_url": "",
+        "published_at": "",
+        "manual_operator": "",
+        "manual_checked_at": "",
+        "manual_note": "",
+    }
+
+
+def write_generated_plan(output_path: Path, rows: list[dict[str, str]], overwrite: bool) -> None:
+    if output_path.exists() and not overwrite:
+        raise BitBrowserError(
+            f"Publish plan already exists: {output_path}. "
+            "Pass --overwrite-plan or choose --output-plan-csv."
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=PUBLISH_PLAN_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def generate_publish_plan(args: argparse.Namespace) -> int:
+    delivery_dir = resolve_delivery_dir(args)
+    if not delivery_dir.is_dir():
+        raise BitBrowserError(f"Delivery directory not found: {delivery_dir}")
+
+    delivery_csv = resolve_delivery_csv_for_generation(delivery_dir, args.delivery_csv)
+    account_ledger = resolve_account_ledger_for_generation(delivery_dir, args.account_ledger)
+    output_path = (
+        Path(args.output_plan_csv).expanduser().resolve()
+        if args.output_plan_csv
+        else delivery_dir / DEFAULT_PLAN_FILENAME
+    )
+    video_platforms = parse_platform_list(args.plan_video_platforms, "--plan-video-platforms")
+    image_platforms = parse_platform_list(args.plan_image_platforms, "--plan-image-platforms")
+
+    records = load_delivery_records(delivery_csv)
+    accounts_by_platform = usable_accounts_by_platform(load_account_ledger(account_ledger))
+    warnings: list[str] = []
+    videos, images = collect_generation_media(delivery_dir, records, warnings)
+    account_counters: dict[str, int] = {}
+    rows: list[dict[str, str]] = []
+
+    def add_rows(
+        media_items: list[tuple[Path, DeliveryRecord]],
+        platforms: list[str],
+        content_type: str,
+    ) -> None:
+        for media_path, record in media_items:
+            for platform in platforms:
+                account = choose_round_robin_account(accounts_by_platform, account_counters, platform)
+                if account is None:
+                    warnings.append(f"No usable account for {platform}; skipped {media_path.name}")
+                    continue
+                rows.append(
+                    build_generated_plan_row(
+                        args,
+                        output_path.parent,
+                        media_path,
+                        record,
+                        platform,
+                        content_type,
+                        len(rows) + 1,
+                        account,
+                    )
+                )
+
+    add_rows(videos, video_platforms, "video")
+    add_rows(images, image_platforms, "image")
+
+    if not rows:
+        detail = "\n".join(f"  - {warning}" for warning in warnings) or "  (no media found)"
+        raise BitBrowserError(f"No publish plan rows generated.\n{detail}")
+
+    write_generated_plan(output_path, rows, args.overwrite_plan)
+    print(f"Generated publish plan: {output_path}")
+    print(f"Rows: {len(rows)}")
+    print(f"Delivery CSV: {delivery_csv}")
+    print(f"Account ledger: {account_ledger}")
+    if warnings:
+        print("Warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
+    return 0
 
 
 def connect_browser_context(cdp_url: str):
@@ -1674,6 +2042,8 @@ def run_plan(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.generate_plan:
+        return generate_publish_plan(args)
     if args.summarize_log_jsonl:
         summary_csv = Path(args.summary_csv).expanduser().resolve()
         rows = write_summary_csv(
@@ -1801,6 +2171,81 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Run operator mode: discover the active publish_plan.csv, process READY rows, "
             "write logs/status, keep prepared tabs open, and stop before final publish."
         ),
+    )
+    parser.add_argument(
+        "--generate-plan",
+        action="store_true",
+        help=(
+            "Generate publish_plan.csv from a delivery directory, delivery CSV, media files, "
+            "and account ledger, then exit."
+        ),
+    )
+    parser.add_argument(
+        "--delivery-dir",
+        help=(
+            "Delivery package directory for --generate-plan. Defaults to the directory of "
+            "--delivery-csv, or the current working directory."
+        ),
+    )
+    parser.add_argument(
+        "--output-plan-csv",
+        help="Output path for --generate-plan. Defaults to publish_plan.csv in the delivery directory.",
+    )
+    parser.add_argument(
+        "--overwrite-plan",
+        action="store_true",
+        help="Allow --generate-plan to overwrite an existing publish_plan.csv.",
+    )
+    parser.add_argument(
+        "--plan-video-platforms",
+        default="tiktok",
+        help="Comma-separated platforms generated for video files. Default: tiktok. Use none to disable.",
+    )
+    parser.add_argument(
+        "--plan-image-platforms",
+        default="facebook",
+        help="Comma-separated platforms generated for image files. Default: facebook. Use none to disable.",
+    )
+    parser.add_argument(
+        "--plan-client-id",
+        default="",
+        help="client_id written to generated publish_plan.csv rows.",
+    )
+    parser.add_argument(
+        "--plan-product-id",
+        default="",
+        help="product_id written to generated publish_plan.csv rows.",
+    )
+    parser.add_argument(
+        "--plan-operator",
+        default="",
+        help="operator written to generated publish_plan.csv rows.",
+    )
+    parser.add_argument(
+        "--plan-initial-status",
+        default="READY",
+        help="Initial status for generated rows. Default: READY.",
+    )
+    parser.add_argument(
+        "--plan-note",
+        default="",
+        help="note written to generated publish_plan.csv rows.",
+    )
+    parser.add_argument(
+        "--plan-attribution-prefix",
+        default="",
+        help="Optional attribution token prefix for generated rows.",
+    )
+    parser.add_argument(
+        "--plan-scheduled-start",
+        default="",
+        help="Optional ISO start time for scheduled_at, e.g. 2026-08-14T10:00:00.",
+    )
+    parser.add_argument(
+        "--plan-interval-minutes",
+        type=int,
+        default=30,
+        help="Minute interval between generated scheduled_at values. Default: 30.",
     )
     parser.add_argument("--platform", choices=["tiktok", "facebook"])
     parser.add_argument("--publish-id", default="", help="Optional publish task ID for logs/screenshots")

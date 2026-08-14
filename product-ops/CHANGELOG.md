@@ -1,8 +1,22 @@
 # 文档变更日志
 
-> 更新时间：2026-08-13  
+> 更新时间：2026-08-14
 > 文档类型：变更日志  
 > 状态：草案
+
+## 2026-08-14
+
+### Added
+
+- RPA 示例脚本新增 `--generate-plan`，可从投放包目录、`矩阵投放文案对照表.csv`、`账号环境台账.csv` 和素材文件自动生成 `publish_plan.csv`。
+- 发布计划生成器新增 `--plan-video-platforms`、`--plan-image-platforms`、`--plan-client-id`、`--plan-product-id`、`--plan-scheduled-start`、`--plan-interval-minutes` 等参数；默认视频生成 TikTok 任务、图片生成 Facebook 任务。
+- 发布计划生成器默认拒绝覆盖已有 `publish_plan.csv`，需要显式传 `--overwrite-plan` 或使用 `--output-plan-csv` 输出到临时文件。
+
+### Verified
+
+- 使用真实投放包生成 `E:\project\dopaMatrix\output\publish-rpa\generated-plan-test.csv`，当前包内只有视频素材，因此生成 1 条 TikTok READY 任务。
+- 对生成的计划表执行 `--print-plan --limit 1`，确认可正确解析素材路径、账号台账、caption、追踪短链和归因 token。
+- 验证已有 `publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行结果和人工回填状态。
 
 ## 2026-08-13
 

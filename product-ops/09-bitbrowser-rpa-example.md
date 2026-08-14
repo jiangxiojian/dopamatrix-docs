@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-08-13  
+> 更新时间：2026-08-14
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -41,6 +41,61 @@ docs\scripts\publishing\run_publisher.cmd
 7. 停在最终发布前，保留任务 Tab 给人工检查。
 
 一键模式不会点击 TikTok 发布或 Facebook 发布按钮。找不到计划表、找到多个含 `READY` 任务的计划表，或平台需要人工验证码/人脸验证时，脚本会停止并输出原因。
+
+## 自动生成发布计划
+
+运营不需要手写 `publish_plan.csv`。准备好投放包后，可以先让脚本生成计划表：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --generate-plan `
+  --delivery-dir "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)" `
+  --plan-client-id DMX `
+  --plan-product-id SHOCK-ABSORBER-001 `
+  --plan-operator operator
+```
+
+生成器会读取：
+
+1. `矩阵投放文案对照表.csv`
+2. `账号环境台账.csv`
+3. `videos/` 里的视频文件
+4. `images/` 里的图片文件
+
+默认规则：
+
+| 素材 | 默认生成平台 | 说明 |
+| --- | --- | --- |
+| 视频 | TikTok | `--plan-video-platforms tiktok` |
+| 图片 | Facebook | `--plan-image-platforms facebook` |
+
+如果交付包里只有视频，保持默认就只会生成 TikTok；如果目录里有图片但本批不想发 Facebook，可以传 `--plan-image-platforms none`。如果只想生成 Facebook 图片任务，可以传 `--plan-video-platforms none`。后续如果要测试 FB 视频/Reels，再显式改生成规则。
+
+默认输出到投放包里的：
+
+```text
+publish_plan.csv
+```
+
+如果文件已存在，脚本不会覆盖，避免把已经执行、回填或人工标记过的计划表冲掉。需要覆盖时必须显式加：
+
+```powershell
+--overwrite-plan
+```
+
+更安全的测试方式是输出到临时文件：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --generate-plan `
+  --delivery-dir "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)" `
+  --output-plan-csv "E:\project\dopaMatrix\output\publish-rpa\generated-plan-test.csv" `
+  --overwrite-plan `
+  --plan-client-id DMX `
+  --plan-product-id SHOCK-ABSORBER-001
+```
+
+生成后先用 `--print-plan` 预览，确认账号、素材路径、caption、短链和归因 token 都正确，再运行一键发布准备。
 
 ## 前置条件
 
