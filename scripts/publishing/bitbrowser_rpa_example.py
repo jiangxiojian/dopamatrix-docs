@@ -68,6 +68,7 @@ DEFAULT_ACCOUNT_LEDGER_FILENAME = "账号环境台账.csv"
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
 FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
+FACEBOOK_CONTENT_MODES = ("post", "reel", "story")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
 SUPPORTED_PLATFORMS = ("tiktok", "facebook")
 PLATFORM_CODES = {
@@ -82,6 +83,8 @@ PUBLISH_PLAN_FIELDS = [
     "product_id",
     "platform",
     "content_type",
+    "facebook_content_mode",
+    "composer_url",
     "account_key",
     "browser_profile_id",
     "media_path",
@@ -111,6 +114,8 @@ SUMMARY_FIELDS = [
     "product_id",
     "platform",
     "content_type",
+    "facebook_content_mode",
+    "composer_url",
     "account_key",
     "profile_id",
     "profile_name",
@@ -155,6 +160,14 @@ SUMMARY_PLAN_COLUMNS = {
     "product_id": ("product_id", "产品ID", "sku"),
     "platform": ("platform", "平台"),
     "content_type": ("content_type", "内容类型"),
+    "facebook_content_mode": (
+        "facebook_content_mode",
+        "fb_content_mode",
+        "Facebook内容模式",
+        "FB内容模式",
+        "内容模式",
+    ),
+    "composer_url": ("composer_url", "facebook_composer_url", "target_url", "发布入口", "入口URL"),
     "account_key": ("account_key", "账号键", "account_code"),
     "profile_id": ("browser_profile_id", "profile_id", "窗口ID", "browser_id"),
     "media_path": ("media_path", "素材路径", "media", "path"),
@@ -427,6 +440,8 @@ class PublishPlanEntry:
     client_id: str = ""
     product_id: str = ""
     content_type: str = ""
+    facebook_content_mode: str = ""
+    composer_url: str = ""
     account_key: str = ""
     browser_profile_id: str = ""
     media_path: str = ""
@@ -959,6 +974,22 @@ def load_publish_plan(csv_path: Path) -> list[PublishPlanEntry]:
                 client_id=_first_nonempty(row, "client_id", "客户ID"),
                 product_id=_first_nonempty(row, "product_id", "产品ID", "sku"),
                 content_type=_first_nonempty(row, "content_type", "内容类型"),
+                facebook_content_mode=_first_nonempty(
+                    row,
+                    "facebook_content_mode",
+                    "fb_content_mode",
+                    "Facebook内容模式",
+                    "FB内容模式",
+                    "内容模式",
+                ),
+                composer_url=_first_nonempty(
+                    row,
+                    "composer_url",
+                    "facebook_composer_url",
+                    "target_url",
+                    "发布入口",
+                    "入口URL",
+                ),
                 account_key=_first_nonempty(row, "account_key", "账号键", "account_code"),
                 browser_profile_id=_first_nonempty(
                     row,
@@ -1264,12 +1295,21 @@ def build_generated_plan_row(
         str(row_index) if args.plan_repeat > 1 else "",
     )
     note = args.plan_note or "自动生成；脚本只准备草稿，最终发布由人工确认。"
+    facebook_content_mode = ""
+    composer_url = ""
+    if platform == "facebook":
+        facebook_content_mode = "post"
+        if content_type == "video":
+            facebook_content_mode = args.plan_facebook_video_mode
+            composer_url = args.plan_facebook_video_composer_url
     return {
         "publish_id": make_publish_id(platform, media_path, row_index),
         "client_id": args.plan_client_id or "",
         "product_id": args.plan_product_id or "",
         "platform": platform,
         "content_type": content_type,
+        "facebook_content_mode": facebook_content_mode,
+        "composer_url": composer_url,
         "account_key": account.account_key,
         "browser_profile_id": "",
         "media_path": relative_media_path_for_plan(media_path, plan_base_dir),
@@ -1329,6 +1369,15 @@ def generate_publish_plan(args: argparse.Namespace) -> int:
     accounts_by_platform = usable_accounts_by_platform(load_account_ledger(account_ledger))
     warnings: list[str] = []
     videos, images = collect_generation_media(delivery_dir, records, warnings)
+    if (
+        "facebook" in video_platforms
+        and args.plan_facebook_video_mode != "post"
+        and not args.plan_facebook_video_composer_url
+    ):
+        warnings.append(
+            "Facebook video mode is not post, but --plan-facebook-video-composer-url is empty. "
+            "Rows will rely on the runtime default composer URL unless a composer_url is filled manually."
+        )
     account_counters: dict[str, int] = {}
     rows: list[dict[str, str]] = []
 
@@ -1473,9 +1522,23 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
         "button:has-text('添加照片')",
         "div[role='button']:has-text('添加照片')",
         "span:has-text('添加照片')",
+        "[role='button']:has-text('添加视频')",
+        "button:has-text('添加视频')",
+        "div[role='button']:has-text('添加视频')",
+        "span:has-text('添加视频')",
+        "[role='button']:has-text('添加媒体')",
+        "button:has-text('添加媒体')",
+        "div[role='button']:has-text('添加媒体')",
+        "span:has-text('添加媒体')",
         "text=/添加照片/",
+        "text=/添加视频/",
+        "text=/添加媒体/",
         "[aria-label*='添加照片' i]",
+        "[aria-label*='添加视频' i]",
+        "[aria-label*='添加媒体' i]",
         "[aria-label*='照片' i]",
+        "[aria-label*='视频' i]",
+        "[aria-label*='媒体' i]",
         "[role='button']:has-text('Add photo/video')",
         "button:has-text('Add photo/video')",
         "div[role='button']:has-text('Add photo/video')",
@@ -1484,10 +1547,36 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
         "button:has-text('Photo/video')",
         "div[role='button']:has-text('Photo/video')",
         "span:has-text('Photo/video')",
+        "[role='button']:has-text('Add video')",
+        "button:has-text('Add video')",
+        "div[role='button']:has-text('Add video')",
+        "span:has-text('Add video')",
+        "[role='button']:has-text('Upload video')",
+        "button:has-text('Upload video')",
+        "div[role='button']:has-text('Upload video')",
+        "span:has-text('Upload video')",
+        "[role='button']:has-text('Add media')",
+        "button:has-text('Add media')",
+        "div[role='button']:has-text('Add media')",
+        "span:has-text('Add media')",
+        "[role='button']:has-text('Create reel')",
+        "button:has-text('Create reel')",
+        "div[role='button']:has-text('Create reel')",
+        "span:has-text('Create reel')",
         "[aria-label*='Add photo' i]",
+        "[aria-label*='Add video' i]",
+        "[aria-label*='Upload video' i]",
+        "[aria-label*='Add media' i]",
+        "[aria-label*='reel' i]",
         "[aria-label*='photo' i]",
+        "[aria-label*='video' i]",
+        "[aria-label*='media' i]",
         "text=/Add photo\\/video/i",
         "text=/Photo\\/video/i",
+        "text=/Add video/i",
+        "text=/Upload video/i",
+        "text=/Add media/i",
+        "text=/Create reel/i",
         "text=/添加照片\\/视频/",
     ]
     for selector in selectors:
@@ -1620,8 +1709,11 @@ def publish_facebook(
     caption: str,
     upload_wait_ms: int = DEFAULT_UPLOAD_WAIT_MS,
     upload_mode: str = "auto",
+    composer_url: str = DEFAULT_FACEBOOK_COMPOSER_URL,
+    content_mode: str = "post",
 ) -> dict[str, Any]:
-    page.goto(DEFAULT_FACEBOOK_COMPOSER_URL, wait_until="domcontentloaded", timeout=60_000)
+    target_url = composer_url or DEFAULT_FACEBOOK_COMPOSER_URL
+    page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(5000)
 
     dismissed_popups = dismiss_safe_popups(page)
@@ -1643,13 +1735,23 @@ def publish_facebook(
         "url": page.url,
         "uploaded": uploaded,
         "caption_filled": caption_filled,
+        "composer_url": target_url,
+        "content_mode": content_mode,
         "upload_mode": upload_mode,
         "direct_input_attempted": direct_input_attempted,
         "file_chooser_attempted": file_chooser_attempted,
         "used_file_chooser": used_file_chooser,
         "dismissed_popups": dismissed_popups,
-        "checkpoint": "请人工检查 Page 是否正确、图片/文案预览、发布或排期设置，然后手动点击发布。",
+        "checkpoint": facebook_checkpoint(content_mode),
     }
+
+
+def facebook_checkpoint(content_mode: str) -> str:
+    if content_mode == "reel":
+        return "请人工检查 Page/Reels 入口是否正确、视频预览、caption、音乐/版权和发布设置，然后手动点击发布。"
+    if content_mode == "story":
+        return "请人工检查 Page/快拍入口是否正确、素材预览、贴纸/链接和发布设置，然后手动点击发布。"
+    return "请人工检查 Page 是否正确、图片/视频/文案预览、发布或排期设置，然后手动点击发布。"
 
 
 class PlatformPublisher:
@@ -1703,6 +1805,8 @@ class FacebookPublisher(PlatformPublisher):
             caption,
             args.upload_wait_ms,
             args.facebook_upload_mode,
+            args.facebook_composer_url,
+            args.facebook_content_mode,
         )
 
 
@@ -1969,6 +2073,8 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     run_started_at = datetime.now().isoformat(timespec="seconds")
+    facebook_content_mode = args.facebook_content_mode if args.platform == "facebook" else ""
+    facebook_composer_url = args.facebook_composer_url if args.platform == "facebook" else ""
     plan = {
         "started_at": run_started_at,
         "publish_id": args.publish_id,
@@ -1989,6 +2095,8 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         "tracking_url": getattr(args, "tracking_url", ""),
         "attribution_token": getattr(args, "attribution_token", ""),
         "scheduled_at": getattr(args, "scheduled_at", ""),
+        "facebook_content_mode": facebook_content_mode,
+        "composer_url": facebook_composer_url,
         "content_check_action": content_check_action,
         "tab_mode": getattr(args, "tab_mode", "new"),
         "screenshot": str(screenshot_path),
@@ -2204,6 +2312,8 @@ def run_plan(args: argparse.Namespace) -> int:
         task_args.tracking_url = entry.tracking_url
         task_args.attribution_token = entry.attribution_token
         task_args.scheduled_at = entry.scheduled_at
+        task_args.facebook_content_mode = entry.facebook_content_mode or args.facebook_content_mode
+        task_args.facebook_composer_url = entry.composer_url or args.facebook_composer_url
         task_args.delivery_csv = None
         task_args.plan_dir = plan_path.parent
         task_args.plan_csv_path = plan_path
@@ -2482,6 +2592,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=30,
         help="Minute interval between generated scheduled_at values. Default: 30.",
     )
+    parser.add_argument(
+        "--plan-facebook-video-mode",
+        choices=FACEBOOK_CONTENT_MODES,
+        default="post",
+        help=(
+            "facebook_content_mode written for generated Facebook video rows. "
+            "Default: post. Use reel/story only after the target entry is manually verified."
+        ),
+    )
+    parser.add_argument(
+        "--plan-facebook-video-composer-url",
+        default="",
+        help=(
+            "Optional composer_url written for generated Facebook video rows, e.g. a "
+            "manually verified Business Suite Reels composer URL."
+        ),
+    )
     parser.add_argument("--platform", choices=["tiktok", "facebook"])
     parser.add_argument("--publish-id", default="", help="Optional publish task ID for logs/screenshots")
     parser.add_argument("--client-id", default="", help="Optional client ID for logs and summaries")
@@ -2557,6 +2684,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Facebook upload strategy. Default: auto, which tries input first and then a "
             "Playwright-controlled file chooser. input-only never opens a native file chooser."
+        ),
+    )
+    parser.add_argument(
+        "--facebook-content-mode",
+        choices=FACEBOOK_CONTENT_MODES,
+        default="post",
+        help="Facebook target surface for checkpoints/logs. Default: post.",
+    )
+    parser.add_argument(
+        "--facebook-composer-url",
+        default=DEFAULT_FACEBOOK_COMPOSER_URL,
+        help=(
+            "Facebook composer URL to open. Plan CSV composer_url overrides this per row. "
+            f"Default: {DEFAULT_FACEBOOK_COMPOSER_URL}"
         ),
     )
     parser.add_argument(

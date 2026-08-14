@@ -44,6 +44,7 @@
 | Tab 隔离 | 已实机验证 | 默认 `--tab-mode new`，每条任务新开 Tab；关闭窗口后重开、窗口已打开再次执行、TK 单条和 FB 单条草稿准备均确认不会覆盖原 Tab。 |
 | Tab 诊断 | 已实现基础版 | 支持 `--trace-tabs`、`--stop-after-connect`、`--close-task-tab` 和 `--clean-blank-tabs`，可排查同窗口多平台时的页面隔离。 |
 | Facebook 上传策略 | 已实机验证基础版 | 支持 `input-only/auto/file-chooser`；默认 `auto`，多轮实测通过受控 file chooser 完成上传，且不再裸点按钮。 |
+| Facebook 视频/Reels 脚本层支持 | 已实现基础版 | 计划表新增 `facebook_content_mode` 和 `composer_url`，运行时可按行打开指定 FB 入口；生成器支持 `--plan-facebook-video-mode` 和 `--plan-facebook-video-composer-url`。 |
 | 一键运行入口 | 已实机验证基础版 | 直接运行脚本或双击 `run_publisher.cmd`，自动发现 READY 计划；没有 READY 且只有一个安全投放包时会先生成计划，再读取台账、写日志/状态并停在人工发布前。 |
 | 单次截图 | 已实现 | 每次 RPA 可保存发布前截图。 |
 | 单次 JSON 日志 | 已实现基础版 | `--log-json` 可记录账号、素材、截图和执行结果。 |
@@ -58,7 +59,7 @@
 | 发布计划格式 | 已能从交付包自动生成基础计划；还没有按账号每日上限、排期窗口、客户优先级和平台内容策略做智能分配。 | 运营手工整理容易出错，后续要把生成规则做得更像排产系统。 |
 | RPA 发布操作台增强 | 静态 HTML 已能搜索、筛选、复制回填命令和生成失败/部分成功重试命令；还不能在页面里直接写回状态、维护账号健康备注或导出客户报告数据。 | 批量运营需要进一步减少复制命令和手工切表动作。 |
 | 发布后回填 | 手工回填命令已完成；还不能自动读取帖子 URL、发布时间、平台 post id。 | 报告、归因和客户交付都需要帖子链接和状态。 |
-| Facebook 内容类型 | 只验证了 Page 图片帖。 | 后续还需要 FB 视频/Reels、快拍、个人主页测试入口。 |
+| Facebook 内容类型 | Page 图片帖已实机验证；FB 视频/Reels 脚本层支持已完成，但还没有真实上传验证。 | 后续还需要把已验证入口 URL 写入 `composer_url`，跑 1 条视频/Reels 草稿准备。 |
 | Facebook 上传稳定性 | 当前 Page 图片帖多轮 `auto` 测试已通过；仍需其他 Page、视频/Reels 和更多图片样本。 | FB 页面不稳定时容易弹系统文件选择器，必须确保脚本不会卡死整组任务。 |
 | TikTok 多样本稳定性 | 已完成 3 条重复视频批量彩排；还需要真实多素材覆盖。 | 需要连续样本证明选择器和弹窗处理可靠。 |
 | 异常分类细化 | 平台级基础错误码已完成；还没有按具体页面截图、弹窗文案和账号状态做更细判定。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
@@ -90,7 +91,7 @@
 | P1-2 | 细化平台异常分类 | 基础版已完成。已补 TK/FB 上传失败、caption 失败、FB Page 权限、FB file chooser 超时、代理隧道失败等分类；下一步按真实弹窗截图继续补。 |
 | P1-3 | RPA 发布操作台 V1 | 已实现基础版。从 JSONL/计划表里查看每条任务的状态、截图、人工结果和帖子链接；支持复制/生成人工回填命令。 |
 | P1-4 | 增强截图命名规则 | 截图按 `publish_id/platform/account_key/timestamp` 自动命名，后续可按账号归档。 |
-| P1-5 | 支持 Facebook Reels/视频 | 至少验证 1 条视频上传到 FB Page，并停在发布前。 |
+| P1-5 | 支持 Facebook Reels/视频 | 脚本层基础版已完成；下一步至少验证 1 条视频上传到 FB Page/Reels 入口，并停在发布前。 |
 
 ### P2：从脚本走向小工具
 
@@ -136,10 +137,10 @@ publish_plan.csv
 推荐字段：
 
 ```csv
-publish_id,client_id,product_id,platform,content_type,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note,last_result_status,last_result_at,result_screenshot,error_type,error_message,post_url,published_at,manual_operator,manual_checked_at,manual_note
+publish_id,client_id,product_id,platform,content_type,facebook_content_mode,composer_url,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note,last_result_status,last_result_at,result_screenshot,error_type,error_message,post_url,published_at,manual_operator,manual_checked_at,manual_note
 ```
 
-其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从账号台账查；只有临时测试才直接填窗口 ID。`media_path` 的相对路径按 `publish_plan.csv` 所在目录解析，所以计划表应保存在投放包目录内。
+其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从账号台账查；只有临时测试才直接填窗口 ID。`media_path` 的相对路径按 `publish_plan.csv` 所在目录解析，所以计划表应保存在投放包目录内。`facebook_content_mode` 和 `composer_url` 只用于 Facebook 任务，特别是视频/Reels/快拍入口；普通 FB 图片帖可以留空。
 
 当前脚本已支持自动生成：
 
@@ -245,4 +246,4 @@ E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv
 
 ## 下一步
 
-下一步建议继续 `P1-5`：补 Facebook Page 视频/Reels 的发布前准备验证。操作台已有静态增强基础版，后续再做真正能写回状态、记录账号健康备注和导出报告数据的确认工作台。
+下一步建议继续 `P1-5` 的实机部分：打开真实 Facebook Page 视频/Reels 入口，把 URL 复制到 `composer_url`，跑 1 条视频上传并停在发布前。操作台已有静态增强基础版，后续再做真正能写回状态、记录账号健康备注和导出报告数据的确认工作台。

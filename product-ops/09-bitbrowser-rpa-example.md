@@ -70,7 +70,23 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 | 视频 | TikTok | `--plan-video-platforms tiktok` |
 | 图片 | Facebook | `--plan-image-platforms facebook` |
 
-如果交付包里只有视频，保持默认就只会生成 TikTok；如果目录里有图片但本批不想发 Facebook，可以传 `--plan-image-platforms none`。如果只想生成 Facebook 图片任务，可以传 `--plan-video-platforms none`。后续如果要测试 FB 视频/Reels，再显式改生成规则。
+如果交付包里只有视频，保持默认就只会生成 TikTok；如果目录里有图片但本批不想发 Facebook，可以传 `--plan-image-platforms none`。如果只想生成 Facebook 图片任务，可以传 `--plan-video-platforms none`。
+
+如果要给同一个视频同时生成 TikTok 和 Facebook 视频/Reels 任务，可以显式打开 Facebook 视频计划：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --generate-plan `
+  --delivery-dir "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)" `
+  --plan-client-id DMX `
+  --plan-product-id SHOCK-ABSORBER-001 `
+  --plan-video-platforms tiktok,facebook `
+  --plan-image-platforms facebook `
+  --plan-facebook-video-mode reel `
+  --plan-facebook-video-composer-url "PASTE_VERIFIED_FACEBOOK_ENTRY_URL_HERE"
+```
+
+`--plan-facebook-video-mode` 可选 `post`、`reel`、`story`。`post` 是默认值；`reel` / `story` 只建议在运营已经手动打开并确认目标入口后使用，同时把入口 URL 填到 `--plan-facebook-video-composer-url` 或计划表的 `composer_url`。脚本不会假设某个固定 Business Suite URL 永远有效。
 
 内部彩排可以用同一个素材重复生成多条任务，用来验证批量队列、Tab 隔离、日志和状态回写：
 
@@ -187,6 +203,22 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 脚本会打开 Meta Business Suite composer，尝试填文案和上传图片。当前已在 `Bright Auto Picks` Page 上验证：脚本可以进入 composer、通过受控 file chooser 上传图片、填写文案、截图，并停在最终发布按钮前。
 
+Facebook 视频/Reels 的脚本层参数已经预留：
+
+```powershell
+python docs/scripts/publishing/bitbrowser_rpa_example.py `
+  --platform facebook `
+  --content-type video `
+  --facebook-content-mode reel `
+  --facebook-composer-url "PASTE_VERIFIED_FACEBOOK_ENTRY_URL_HERE" `
+  --profile-id "YOUR_FB_PROFILE_ID" `
+  --media "E:\project\dopaMatrix\output\publish-rpa\sample-video.mp4" `
+  --caption "内部测试：仅准备 Facebook 视频/Reels 草稿，不发布。" `
+  --pause
+```
+
+这条链路目前完成的是脚本层支持：计划表可以记录 `facebook_content_mode` 和 `composer_url`，运行时会按行打开指定入口，上传按钮选择器也补充了 `Add video`、`Upload video`、`Add media`、`Create reel`、`添加视频`、`添加媒体` 等文案。真实 Facebook Page 视频/Reels 上传仍需要实机验证。
+
 Facebook 上传有三种模式；普通运行不需要传这个参数，默认使用 `auto`：
 
 | 参数 | 用途 |
@@ -226,10 +258,10 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 当前模板字段：
 
 ```csv
-publish_id,client_id,product_id,platform,content_type,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note
+publish_id,client_id,product_id,platform,content_type,facebook_content_mode,composer_url,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note
 ```
 
-脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析，所以计划表建议放在投放包目录内；如果复制到别的目录测试，`media_path` 最好改成绝对路径。账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。
+脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析，所以计划表建议放在投放包目录内；如果复制到别的目录测试，`media_path` 最好改成绝对路径。账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。`facebook_content_mode` 和 `composer_url` 只影响 Facebook 任务；旧计划表没有这两列也能继续运行。
 
 脚本默认使用 `--tab-mode new`，每条发布任务都会在同一个比特浏览器环境里新开一个 Tab，再进入对应平台页面。这个默认值很重要：如果同一个窗口同时登录 TK 和 FB，连续跑计划表时不能复用第一个已有 Tab，否则后一条 FB 任务可能把前一条 TK 草稿页 `goto` 覆盖掉。旧行为只保留给调试：
 
@@ -423,13 +455,14 @@ post_url 自动识别
 | 平台发布器拆分 | 已静态验证：`get_publisher('tiktok')` 返回 `TikTokPublisher`，`get_publisher('facebook')` 返回 `FacebookPublisher`；FB `--print-plan` 仍可正常解析计划表 |
 | 平台异常分类细化 | 已静态验证：部分成功结果会按平台返回 `TIKTOK_UPLOAD_NOT_CONFIRMED`、`FACEBOOK_UPLOAD_NOT_CONFIRMED`、`TIKTOK_CAPTION_NOT_FILLED`、`FACEBOOK_CAPTION_NOT_FILLED` 等错误码 |
 | RPA 操作台增强 | 已静态验证：批量彩排目录生成的 HTML 包含 6 条任务、状态/平台筛选、搜索框、复制按钮、JSONL 回填参数和失败/部分成功重试命令 |
+| Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
 
 1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
-2. 补 Facebook Page 视频/Reels 和个人主页测试入口。
+2. 打开真实 Facebook Page 视频/Reels 入口，复制 URL 到 `composer_url` 后跑 1 条上传测试，仍停在发布前。
 3. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
 4. 继续增强 `RPA 发布操作台 V1`：从复制命令进化到能直接写回状态、记录账号健康备注和导出报告数据。
 

@@ -26,6 +26,9 @@ FIELDS = [
     "publish_id",
     "platform",
     "status",
+    "content_type",
+    "facebook_content_mode",
+    "composer_url",
     "account_key",
     "profile_name",
     "client_id",
@@ -89,6 +92,9 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
     return {
         "publish_id": first_nonempty(row, "publish_id", "发布ID", "id"),
         "platform": first_nonempty(row, "platform", "平台"),
+        "content_type": first_nonempty(row, "content_type", "内容类型"),
+        "facebook_content_mode": first_nonempty(row, "facebook_content_mode", "fb_content_mode", "Facebook内容模式", "FB内容模式", "内容模式"),
+        "composer_url": first_nonempty(row, "composer_url", "facebook_composer_url", "target_url", "发布入口", "入口URL"),
         "status": first_nonempty(row, "status", "状态"),
         "account_key": first_nonempty(row, "account_key", "账号键", "account_code"),
         "profile_name": first_nonempty(row, "profile_name", "窗口名称"),
@@ -277,6 +283,8 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
             for key in (
                 "publish_id",
                 "platform",
+                "content_type",
+                "facebook_content_mode",
                 "account_key",
                 "profile_name",
                 "client_id",
@@ -284,6 +292,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                 "title",
                 "media_path",
                 "tracking_url",
+                "composer_url",
                 "attribution_token",
                 "error_type",
                 "manual_note",
@@ -306,10 +315,13 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <span>窗口：{escape(row.get('profile_name', ''))}</span>
                   <span>客户：{escape(row.get('client_id', ''))}</span>
                   <span>产品：{escape(row.get('product_id', ''))}</span>
+                  <span>内容：{escape(row.get('content_type', ''))}</span>
+                  <span>FB模式：{escape(row.get('facebook_content_mode', ''))}</span>
                   <span>上传：{escape(row.get('uploaded', ''))}</span>
                   <span>文案：{escape(row.get('caption_filled', ''))}</span>
                 </div>
                 <div class="paths">
+                  <div>入口：{escape(row.get('composer_url', ''))}</div>
                   <div>短链：{escape(row.get('tracking_url', ''))}</div>
                   <div>帖子：{escape(row.get('post_url', ''))}</div>
                   <div>素材：{escape(row.get('media_path', ''))}</div>

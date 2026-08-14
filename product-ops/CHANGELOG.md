@@ -20,6 +20,8 @@
 - RPA 主脚本新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和平台注册表，主流程改为通过 `get_publisher(platform)` 调度平台准备逻辑。
 - RPA 异常分类继续细化：补充 `MEDIA_FORMAT_UNSUPPORTED`、`PLATFORM_RATE_LIMIT_OR_RESTRICTION`、`FACEBOOK_FILE_CHOOSER_TIMEOUT`、`FACEBOOK_PAGE_ACCESS`、`TIKTOK_CONTENT_CHECK_SETTING`，并把部分成功结果细分为 TK/FB 上传或文案失败。
 - RPA 发布操作台新增搜索、状态/平台组合筛选、复制按钮、`--log-jsonl` 回填参数和失败/部分成功重试命令，便于运营从静态页完成检查后的下一步动作。
+- RPA 发布计划和运行时新增 Facebook 视频/Reels 脚本层支持：计划表新增 `facebook_content_mode`、`composer_url`，生成器新增 `--plan-facebook-video-mode`、`--plan-facebook-video-composer-url`，运行时新增 `--facebook-content-mode`、`--facebook-composer-url`。
+- Facebook 上传按钮选择器补充 `Add video`、`Upload video`、`Add media`、`Create reel`、`添加视频`、`添加媒体` 等文案，为 Page 视频/Reels 入口做准备。
 
 ### Verified
 
@@ -34,6 +36,8 @@
 - 使用批量彩排目录生成 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html`，确认页面包含 6 条任务、`REJECTED_MANUAL` 状态筛选、截图 file 链接和 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令；同时验证缺少汇总 CSV 时可用 JSONL 兜底生成。
 - 静态验证平台注册表和错误分类：`tiktok` 可调度到 `TikTokPublisher`，`facebook` 可调度到 `FacebookPublisher`，部分成功结果可返回平台级错误码；用 FB `--print-plan` 确认计划表解析仍正常，不打开浏览器、不发布。
 - 重新生成批量彩排操作台 HTML，确认 6 条任务仍完整，页面包含搜索框、平台筛选、复制回填按钮、失败/部分成功重试命令和 JSONL 日志参数。
+- 用 `--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 生成 FB 视频计划，确认 `publish_plan.csv` 带出 `facebook_content_mode=reel` 和 `composer_url`；用 `--print-plan` 确认运行时计划会保留这些字段，不打开浏览器、不发布。
+- 生成 FB 视频/Reels 计划-only 操作台，确认静态页面展示 `内容：video`、`FB模式：reel` 和入口 URL；导出汇总 CSV 时表头保留 `facebook_content_mode`、`composer_url`。
 
 ## 2026-08-13
 
