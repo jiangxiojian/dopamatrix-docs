@@ -380,6 +380,30 @@ python docs/scripts/publishing/rpa_operator_console.py `
 - 一键复制“已发布回填”“不发布回填”和“失败/部分成功重试”命令。
 - 回填命令自动带上 `--log-jsonl`，避免只改计划表却漏写日志。
 
+## 启动 RPA 确认工作台
+
+如果运营想直接在页面里写回人工结果，可以启动本地确认工作台：
+
+```powershell
+python docs/scripts/publishing/rpa_workbench_server.py `
+  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv" `
+  --operator "operator-name" `
+  --open-browser
+```
+
+也可以双击 `docs\scripts\publishing\run_workbench.cmd`，再粘贴 `publish_plan.csv` 路径，或者把 `publish_plan.csv` 拖到这个 `.cmd` 上。
+
+确认工作台是本机 `127.0.0.1` 临时服务，不需要 DopaMatrix 主项目、不需要数据库。页面可读取计划表、JSONL、截图和汇总 CSV，并直接写回：
+
+- `PUBLISHED_MANUAL`：人工发布完成，写入帖子 URL、发布时间、操作人和备注。
+- `REJECTED_MANUAL`：人工检查后决定不发布。
+- `FAILED`：人工确认失败，写入错误类型和错误信息。
+- `READY`：把失败或部分成功任务重新放回待重试队列。
+- 账号健康备注：按账号记录 `OK/WATCH/BLOCKED/LOGIN_REQUIRED/PROXY_ISSUE/PAGE_ACCESS_ISSUE` 等状态，默认写到投放包目录的 `rpa_account_health.csv`。
+- 导出汇总 CSV：页面按钮会从 JSONL 重新生成 `publish_summary.csv`。
+
 ## 人工发布后回填
 
 脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
@@ -412,7 +436,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，以及生成本地 RPA 发布操作台 HTML。
+- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
 - 没有处理所有平台弹窗。
@@ -428,9 +452,9 @@ account_registry 查询
 发布状态机
 截图和日志入库
 平台弹窗识别
-操作台状态直接回写
-失败重试
 post_url 自动识别
+平台 post id 自动识别
+客户报告网页接入
 ```
 
 ## 需要实机验证的问题

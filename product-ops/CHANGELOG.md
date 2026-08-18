@@ -1,8 +1,20 @@
 # 文档变更日志
 
-> 更新时间：2026-08-17
+> 更新时间：2026-08-18
 > 文档类型：变更日志  
 > 状态：草案
+
+## 2026-08-18
+
+### Added
+
+- 新增 `scripts/publishing/rpa_workbench_server.py`，可启动本地 `127.0.0.1` 确认工作台，读取 `publish_plan.csv`、JSONL、汇总 CSV 和截图。
+- 新增 `scripts/publishing/run_workbench.cmd`，支持双击后粘贴计划表路径，或把 `publish_plan.csv` 拖到脚本上启动确认工作台。
+- 确认工作台支持在页面里写回 `PUBLISHED_MANUAL/REJECTED_MANUAL/FAILED/READY`，追加 JSONL，记录账号健康备注，并从 JSONL 导出 `publish_summary.csv`。
+
+### Verified
+
+- 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test` 测试投放包启动本地确认工作台，验证 `/api/tasks` 可读取任务，`/api/export-summary` 可导出 6 行汇总 CSV。
 
 ## 2026-08-17
 
