@@ -15,6 +15,12 @@
 ### Verified
 
 - 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test` 测试投放包启动本地确认工作台，验证 `/api/tasks` 可读取任务，`/api/export-summary` 可导出 6 行汇总 CSV。
+- 使用 `--task-timeout-seconds 1 --debug-task-sleep-seconds 3` 模拟慢任务，验证批量计划模式会强杀超时子进程并继续收尾，且不会被带 emoji 文案触发的 GBK 编码问题卡住。
+
+### Changed
+
+- 批量计划模式新增单任务硬超时隔离：`--task-timeout-seconds` 大于 0 时，每条任务会进入独立子进程，超时后强杀该任务并继续下一条；一键模式默认 600 秒。
+- Windows 子进程补充 UTF-8 标准流初始化，避免带 emoji 的文案在批量隔离模式下触发 `gbk` 编码错误。
 
 ## 2026-08-17
 

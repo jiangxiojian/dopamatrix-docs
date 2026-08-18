@@ -40,6 +40,7 @@ also be supplied to resolve profile IDs and defaults.
 from __future__ import annotations
 
 import argparse
+import multiprocessing as mp
 import csv
 import hashlib
 import json
@@ -65,6 +66,7 @@ DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 DEFAULT_PLAN_FILENAME = "publish_plan.csv"
 DEFAULT_DELIVERY_CSV_FILENAME = "矩阵投放文案对照表.csv"
 DEFAULT_ACCOUNT_LEDGER_FILENAME = "账号环境台账.csv"
+DEFAULT_TASK_TIMEOUT_SECONDS = 600
 FACEBOOK_FILE_CHOOSER_EVENT_WAIT_MS = 8_000
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
@@ -208,6 +210,22 @@ PLAN_STATUS_COLUMNS = {
 
 class BitBrowserError(RuntimeError):
     pass
+
+
+class TaskTimeoutError(BitBrowserError):
+    def __init__(self, publish_id: str, timeout_seconds: int) -> None:
+        super().__init__(
+            f"Plan row {publish_id} exceeded hard timeout of {timeout_seconds} seconds."
+        )
+        self.publish_id = publish_id
+        self.timeout_seconds = timeout_seconds
+
+
+class ChildTaskError(BitBrowserError):
+    def __init__(self, error_type: str, error_message: str) -> None:
+        super().__init__(f"{error_type}: {error_message}")
+        self.error_type = error_type
+        self.error_message = error_message
 
 
 class NoReadyPublishPlanError(BitBrowserError):
@@ -385,11 +403,14 @@ def configure_one_click(args: argparse.Namespace) -> argparse.Namespace:
     args.trace_tabs = False
     args.stop_after_connect = False
     args.clean_blank_tabs = False
+    if not args.task_timeout_seconds:
+        args.task_timeout_seconds = DEFAULT_TASK_TIMEOUT_SECONDS
     if not args.log_jsonl:
         args.log_jsonl = str(project_root() / DEFAULT_LOG_JSONL)
 
     print("One-click prepare mode")
     print(f"Plan: {plan_path}")
+    print(f"Per-task hard timeout: {args.task_timeout_seconds}s")
     print("Safety: final Publish/Post buttons will not be clicked.")
     return args
 
@@ -1957,6 +1978,8 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
     haystack = f"{error_type} {error_message}".lower()
     platform_key = platform.lower()
+    if "tasktimeouterror" in haystack or "hard timeout" in haystack or "task timeout" in haystack:
+        return "TASK_TIMEOUT"
     if "unsupported platform" in haystack:
         return "UNSUPPORTED_PLATFORM"
     if "media file does not exist" in haystack or "empty_media_path" in haystack:
@@ -2385,8 +2408,117 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             bit.close_profile(profile_id)
 
 
+def _run_single_task_worker(task_args: argparse.Namespace, result_conn: Any) -> None:
+    try:
+        debug_sleep_seconds = int(getattr(task_args, "debug_task_sleep_seconds", 0) or 0)
+        if debug_sleep_seconds > 0:
+            time.sleep(debug_sleep_seconds)
+        configure_utf8_stdio()
+        payload = run_single(task_args)
+        result_conn.send({"ok": True, "payload": payload})
+    except BaseException as exc:
+        result_conn.send(
+            {
+                "ok": False,
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+            }
+        )
+    finally:
+        try:
+            result_conn.close()
+        except Exception:
+            pass
+
+
+def run_single_task_isolated(
+    task_args: argparse.Namespace,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    if timeout_seconds <= 0:
+        raise BitBrowserError("task timeout must be positive for isolated execution.")
+
+    ctx = mp.get_context("spawn")
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    process = ctx.Process(
+        target=_run_single_task_worker,
+        args=(task_args, child_conn),
+    )
+    process.start()
+    child_conn.close()
+    try:
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(10)
+            raise TaskTimeoutError(getattr(task_args, "publish_id", "(unknown)"), timeout_seconds)
+        if not parent_conn.poll():
+            exit_code = process.exitcode
+            if exit_code not in (0, None):
+                raise BitBrowserError(
+                    f"Child task exited with code {exit_code} before returning a payload."
+                )
+            raise BitBrowserError("Child task finished without returning a payload.")
+        result = parent_conn.recv()
+    finally:
+        try:
+            parent_conn.close()
+        except Exception:
+            pass
+
+    if not isinstance(result, dict):
+        raise BitBrowserError("Child task returned an invalid payload.")
+    if result.get("ok"):
+        payload = result.get("payload")
+        if isinstance(payload, dict):
+            return payload
+        raise BitBrowserError("Child task returned a non-dict payload.")
+    raise ChildTaskError(
+        str(result.get("error_type") or "ChildTaskError"),
+        str(result.get("error_message") or ""),
+    )
+
+
+def resolve_profile_id_for_timeout_cleanup(
+    task_args: argparse.Namespace,
+    media_path: Path,
+    plan_dir: Path,
+) -> str:
+    if getattr(task_args, "profile_id", None):
+        return str(task_args.profile_id)
+    try:
+        account_ledger_path = resolve_account_ledger_for_task(
+            media_path,
+            getattr(task_args, "account_ledger", None),
+            plan_dir,
+        )
+        if account_ledger_path is None:
+            return ""
+        account_entry = select_account_entry(
+            load_account_ledger(account_ledger_path),
+            task_args.platform,
+            profile_id=getattr(task_args, "profile_id", None),
+            account_key=getattr(task_args, "account_key", None),
+        )
+        return account_entry.profile_id if account_entry else ""
+    except Exception:
+        return ""
+
+
+def close_profile_after_timeout(args: argparse.Namespace, profile_id: str) -> None:
+    if not profile_id:
+        return
+    try:
+        bit = BitBrowserClient(args.bit_api)
+        bit.close_profile(profile_id)
+        print(f"Timeout cleanup: closed BitBrowser profile {profile_id}")
+    except Exception as exc:
+        print(f"Timeout cleanup failed for profile {profile_id}: {exc}", file=sys.stderr)
+
+
 def run_plan(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan_csv).expanduser().resolve()
+    task_timeout_seconds = max(0, int(getattr(args, "task_timeout_seconds", 0) or 0))
     allowed_statuses = {
         item.strip().upper()
         for item in (args.include_status or "READY").split(",")
@@ -2452,6 +2584,13 @@ def run_plan(args: argparse.Namespace) -> int:
         task_args.plan_csv_path = plan_path
         task_args.plan_row_status = entry.status
         task_args.from_plan = True
+        cleanup_profile_id = resolve_profile_id_for_timeout_cleanup(
+            task_args,
+            media_path,
+            plan_path.parent,
+        )
+        if cleanup_profile_id and not task_args.profile_id:
+            task_args.profile_id = cleanup_profile_id
         task_args.screenshot = (
             str(default_screenshot_path(entry.platform, entry.publish_id))
             if args.screenshot == DEFAULT_SCREENSHOT
@@ -2466,7 +2605,10 @@ def run_plan(args: argparse.Namespace) -> int:
 
         print(f"[{index}/{len(entries)}] {entry.publish_id} {entry.platform} {media_path}")
         try:
-            payload = run_single(task_args)
+            if task_timeout_seconds > 0:
+                payload = run_single_task_isolated(task_args, task_timeout_seconds)
+            else:
+                payload = run_single(task_args)
             if args.print_plan and args.log_jsonl:
                 payload["plan"]["plan_csv"] = str(plan_path)
                 payload["plan"]["plan_row_status"] = entry.status
@@ -2479,6 +2621,26 @@ def run_plan(args: argparse.Namespace) -> int:
                     "Publish plan status updated:",
                     json.dumps(updated, ensure_ascii=False),
                 )
+        except TaskTimeoutError as exc:
+            print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
+            exit_code = 1
+            append_plan_failure(
+                args,
+                plan_path,
+                entry,
+                "TASK_TIMEOUT",
+                str(exc),
+                task_started_at=task_started_at,
+                media_path=str(media_path),
+            )
+            close_profile_after_timeout(args, cleanup_profile_id or task_args.profile_id or "")
+            if not args.continue_on_error:
+                raise
+        except ChildTaskError as exc:
+            print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
+            exit_code = 1
+            if not args.continue_on_error:
+                raise
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
             if code != 0:
@@ -2497,7 +2659,17 @@ def run_plan(args: argparse.Namespace) -> int:
         except Exception as exc:
             print(f"ERROR {entry.publish_id}: {exc}", file=sys.stderr)
             exit_code = 1
-            if not getattr(task_args, "_failure_logged_by_single", False):
+            if task_timeout_seconds > 0:
+                append_plan_failure(
+                    args,
+                    plan_path,
+                    entry,
+                    type(exc).__name__,
+                    str(exc),
+                    task_started_at=task_started_at,
+                    media_path=str(media_path),
+                )
+            elif not getattr(task_args, "_failure_logged_by_single", False):
                 append_plan_failure(
                     args,
                     plan_path,
@@ -2787,6 +2959,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Comma-separated plan row statuses to execute in plan mode. "
             "Default: READY. Use READY,PARTIAL to retry partial rows."
         ),
+    )
+    parser.add_argument(
+        "--task-timeout-seconds",
+        type=int,
+        default=0,
+        help=(
+            "Hard timeout for each plan row. When greater than 0, each row runs in an isolated "
+            "child process and will be killed if it exceeds this many seconds."
+        ),
+    )
+    parser.add_argument(
+        "--debug-task-sleep-seconds",
+        type=int,
+        default=0,
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--write-plan-status",

@@ -272,6 +272,7 @@ def build_retry_command(row: dict[str, str], log_jsonl: str = "") -> str:
         "--limit 1 "
         "--write-plan-status "
         "--continue-on-error "
+        "--task-timeout-seconds 600 "
         "--content-check-action cancel"
     )
     return append_log_arg(command, log_jsonl)

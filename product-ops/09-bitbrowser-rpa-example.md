@@ -380,6 +380,8 @@ python docs/scripts/publishing/rpa_operator_console.py `
 - 一键复制“已发布回填”“不发布回填”和“失败/部分成功重试”命令。
 - 回填命令自动带上 `--log-jsonl`，避免只改计划表却漏写日志。
 
+`--task-timeout-seconds` 可以配合计划模式使用。大于 0 时，每条任务会进入独立子进程，超时就直接杀掉该任务并继续下一条；一键模式默认会把它设成 600 秒，避免单条卡死拖住整批。
+
 ## 启动 RPA 确认工作台
 
 如果运营想直接在页面里写回人工结果，可以启动本地确认工作台：
@@ -437,6 +439,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
 - 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
+- 已支持批量计划模式单任务硬超时隔离；`--task-timeout-seconds` 大于 0 时，每条任务都会走独立子进程，超时会被强制终止并继续下一条。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
 - 没有处理所有平台弹窗。
