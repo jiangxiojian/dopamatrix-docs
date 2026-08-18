@@ -1,8 +1,15 @@
 # 文档变更日志
 
-> 更新时间：2026-08-14
+> 更新时间：2026-08-17
 > 文档类型：变更日志  
 > 状态：草案
+
+## 2026-08-17
+
+### Added
+
+- Facebook 视频/Reels 草稿准备已完成实机验证：脚本会等待页面出现视频尺寸/时长或 Reels 编辑入口等媒体处理完成信号，再回写 `PREPARED`，全过程不点击最终发布。
+- Facebook 上传按钮的 file chooser 等待做了上限收敛，避免某些按钮命中但未弹出文件选择器时长时间空等。
 
 ## 2026-08-14
 
@@ -57,7 +64,7 @@
 
 - Facebook Page 图片帖已完成 `publish_plan.csv` 计划模式真实执行验证：自动上传图片、填文案、截图并写入 `publish_logs.jsonl`，仍停在最终发布前。
 - TikTok 视频已完成 `publish_plan.csv` 计划模式真实执行验证：`PUB-TK-TEST-001` 自动上传视频、填文案、截图、追加 `publish_logs.jsonl`，先通过 `--write-plan-status` 写回 `PREPARED`，后按“不发布”决定人工回填为 `REJECTED_MANUAL`。
-- [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md)、[10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) 和 [TODO.md](./TODO.md) 已同步当前 RPA 状态：批量队列、JSONL、发布汇总 CSV、计划表状态回写、人工回填和基础异常分类均已完成；TK/FB 同窗口顺序执行和多样本彩排仍待实机验证。
+- [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md)、[10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) 和 [TODO.md](./TODO.md) 已同步当前 RPA 状态：批量队列、JSONL、发布汇总 CSV、计划表状态回写、人工回填和基础异常分类均已完成；TK/FB 同窗口顺序执行、多样本彩排以及 FB 视频/Reels 草稿准备也已完成基础验证。
 - 记录 2026-08-13 TK/FB 同窗口顺序彩排问题：旧脚本复用已有 Tab，导致 FB composer 覆盖 TK 草稿；脚本已改为默认 Tab 隔离，等待重新实机复测。
 
 ### Verified

@@ -65,6 +65,7 @@ DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
 DEFAULT_PLAN_FILENAME = "publish_plan.csv"
 DEFAULT_DELIVERY_CSV_FILENAME = "矩阵投放文案对照表.csv"
 DEFAULT_ACCOUNT_LEDGER_FILENAME = "账号环境台账.csv"
+FACEBOOK_FILE_CHOOSER_EVENT_WAIT_MS = 8_000
 CONTENT_CHECK_ACTIONS = ("pause", "enable", "cancel")
 TAB_MODES = ("new", "reuse-first")
 FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
@@ -128,6 +129,10 @@ SUMMARY_FIELDS = [
     "status",
     "uploaded",
     "caption_filled",
+    "media_processing_required",
+    "media_processing_confirmed",
+    "media_processing_signal",
+    "processing_wait_seconds",
     "post_url",
     "published_at",
     "manual_operator",
@@ -1584,13 +1589,121 @@ def upload_via_facebook_media_button(page, media_path: Path, timeout_ms: int) ->
         try:
             if locator.count() == 0:
                 continue
-            with page.expect_file_chooser(timeout=timeout_ms) as chooser_info:
+            with page.expect_file_chooser(
+                timeout=min(timeout_ms, FACEBOOK_FILE_CHOOSER_EVENT_WAIT_MS)
+            ) as chooser_info:
                 locator.first.click(timeout=5000)
             chooser_info.value.set_files(str(media_path))
             return True
         except Exception:
             continue
     return False
+
+
+FACEBOOK_MEDIA_BUSY_PATTERNS = [
+    re.compile(pattern, re.I)
+    for pattern in (
+        r"正在上传影音内容",
+        r"正在上传",
+        r"上传中",
+        r"正在处理",
+        r"处理中",
+        r"uploading\s+(media|video|file)",
+        r"(media|video|file)\s+uploading",
+        r"processing\s+(media|video|file)",
+        r"(media|video|file)\s+processing",
+    )
+]
+
+FACEBOOK_VIDEO_READY_PATTERNS = [
+    re.compile(pattern, re.I)
+    for pattern in (
+        r"\d{2,4}\s*[x×]\s*\d{2,4}\s*[•·]\s*\d{1,2}:\d{2}",
+        r"把你的视频作为\s*Reels?\s*发布",
+        r"转至\s*Reels?\s*编辑器",
+        r"Reels?\s*编辑器",
+        r"编辑视频",
+        r"视频详情",
+        r"视频预览",
+        r"video\s+details",
+        r"edit\s+video",
+        r"video\s+preview",
+        r"go\s+to\s+reels?\s+editor",
+        r"publish\s+your\s+video\s+as\s+a\s+reel",
+    )
+]
+
+
+def first_matching_pattern(patterns: list[re.Pattern[str]], text: str) -> str:
+    for pattern in patterns:
+        match = pattern.search(text)
+        if match:
+            return match.group(0)[:80]
+    return ""
+
+
+def wait_for_facebook_media_processing(
+    page,
+    media_path: Path,
+    uploaded: bool,
+    timeout_ms: int,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    media_suffix = media_path.suffix.lower()
+    required = uploaded and media_suffix in VIDEO_EXTENSIONS
+    if not uploaded:
+        return {
+            "media_processing_required": media_suffix in VIDEO_EXTENSIONS,
+            "media_processing_confirmed": False,
+            "media_processing_signal": "upload_not_confirmed",
+            "processing_wait_seconds": 0,
+        }
+    if not required:
+        return {
+            "media_processing_required": False,
+            "media_processing_confirmed": True,
+            "media_processing_signal": "not_required_for_image",
+            "processing_wait_seconds": 0,
+        }
+
+    last_signal = "waiting_for_video_ready_signal"
+    deadline = started + max(timeout_ms, 1_000) / 1000
+    while time.monotonic() < deadline:
+        body_text = ""
+        try:
+            body_text = page.locator("body").inner_text(timeout=2_000)
+        except Exception as exc:
+            last_signal = f"text_read_error:{type(exc).__name__}"
+
+        busy_signal = first_matching_pattern(FACEBOOK_MEDIA_BUSY_PATTERNS, body_text)
+        ready_signal = first_matching_pattern(FACEBOOK_VIDEO_READY_PATTERNS, body_text)
+        try:
+            if not ready_signal and page.locator("video").count() > 0:
+                ready_signal = "video_element"
+        except Exception:
+            pass
+
+        if ready_signal and not busy_signal:
+            return {
+                "media_processing_required": True,
+                "media_processing_confirmed": True,
+                "media_processing_signal": ready_signal,
+                "processing_wait_seconds": round(time.monotonic() - started, 2),
+            }
+        if ready_signal and busy_signal:
+            last_signal = f"ready:{ready_signal}; busy:{busy_signal}"
+        elif busy_signal:
+            last_signal = f"busy:{busy_signal}"
+        elif body_text:
+            last_signal = "no_ready_or_busy_signal"
+        page.wait_for_timeout(2_000)
+
+    return {
+        "media_processing_required": True,
+        "media_processing_confirmed": False,
+        "media_processing_signal": last_signal,
+        "processing_wait_seconds": round(time.monotonic() - started, 2),
+    }
 
 
 def dismiss_safe_popups(page) -> list[str]:
@@ -1728,6 +1841,12 @@ def publish_facebook(
         used_file_chooser = uploaded
     if uploaded:
         page.wait_for_timeout(5000)
+    media_processing = wait_for_facebook_media_processing(
+        page,
+        media_path,
+        uploaded,
+        upload_wait_ms,
+    )
     caption_filled = fill_text_best_effort(page, caption)
 
     return {
@@ -1741,6 +1860,7 @@ def publish_facebook(
         "direct_input_attempted": direct_input_attempted,
         "file_chooser_attempted": file_chooser_attempted,
         "used_file_chooser": used_file_chooser,
+        **media_processing,
         "dismissed_popups": dismissed_popups,
         "checkpoint": facebook_checkpoint(content_mode),
     }
@@ -1902,6 +2022,15 @@ def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
         if platform == "facebook":
             return "FACEBOOK_UPLOAD_NOT_CONFIRMED", "Facebook media upload was not confirmed by the page."
         return "UPLOAD_NOT_CONFIRMED", "Media upload was not confirmed by the page."
+    if (
+        platform == "facebook"
+        and result.get("media_processing_required")
+        and not result.get("media_processing_confirmed")
+    ):
+        return (
+            "FACEBOOK_MEDIA_PROCESSING_NOT_CONFIRMED",
+            "Facebook video upload finished selecting the file, but the page did not confirm media processing before timeout.",
+        )
     if not result.get("caption_filled"):
         if platform == "tiktok":
             return "TIKTOK_CAPTION_NOT_FILLED", "TikTok caption field was not filled."
@@ -2174,9 +2303,13 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         )
 
         page.screenshot(path=str(screenshot_path), full_page=True)
+        media_processing_ok = (
+            not result.get("media_processing_required")
+            or result.get("media_processing_confirmed")
+        )
         result["status"] = (
             "PREPARED"
-            if result.get("uploaded") and result.get("caption_filled")
+            if result.get("uploaded") and result.get("caption_filled") and media_processing_ok
             else "PARTIAL"
         )
         if result["status"] == "PARTIAL":

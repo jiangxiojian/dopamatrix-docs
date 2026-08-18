@@ -217,7 +217,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --pause
 ```
 
-这条链路目前完成的是脚本层支持：计划表可以记录 `facebook_content_mode` 和 `composer_url`，运行时会按行打开指定入口，上传按钮选择器也补充了 `Add video`、`Upload video`、`Add media`、`Create reel`、`添加视频`、`添加媒体` 等文案。真实 Facebook Page 视频/Reels 上传仍需要实机验证。
+这条链路目前已经完成实机验证：计划表可以记录 `facebook_content_mode` 和 `composer_url`，运行时会按行打开指定入口，上传按钮选择器也补充了 `Add video`、`Upload video`、`Add media`、`Create reel`、`添加视频`、`添加媒体` 等文案。2026-08-17 的 FB Reels 草稿准备会等待页面出现视频尺寸/时长或 Reels 编辑入口等处理完成信号后，才回写 `PREPARED`，整个过程不点击最终发布。
 
 Facebook 上传有三种模式；普通运行不需要传这个参数，默认使用 `auto`：
 

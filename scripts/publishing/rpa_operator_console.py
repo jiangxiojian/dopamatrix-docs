@@ -37,6 +37,10 @@ FIELDS = [
     "title",
     "uploaded",
     "caption_filled",
+    "media_processing_required",
+    "media_processing_confirmed",
+    "media_processing_signal",
+    "processing_wait_seconds",
     "duration_seconds",
     "error_type",
     "error_message",
@@ -139,7 +143,17 @@ def jsonl_value(payload: dict[str, Any], key: str) -> str:
 
     if key == "started_at":
         value = plan.get("started_at", "")
-    elif key in {"finished_at", "uploaded", "caption_filled", "url", "checkpoint"}:
+    elif key in {
+        "finished_at",
+        "uploaded",
+        "caption_filled",
+        "media_processing_required",
+        "media_processing_confirmed",
+        "media_processing_signal",
+        "processing_wait_seconds",
+        "url",
+        "checkpoint",
+    }:
         value = result.get(key, "")
     else:
         value = result.get(key, "")
@@ -319,9 +333,12 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <span>FB模式：{escape(row.get('facebook_content_mode', ''))}</span>
                   <span>上传：{escape(row.get('uploaded', ''))}</span>
                   <span>文案：{escape(row.get('caption_filled', ''))}</span>
+                  <span>媒体处理：{escape(row.get('media_processing_confirmed', ''))}</span>
+                  <span>处理耗时：{escape(row.get('processing_wait_seconds', ''))}</span>
                 </div>
                 <div class="paths">
                   <div>入口：{escape(row.get('composer_url', ''))}</div>
+                  <div>处理信号：{escape(row.get('media_processing_signal', ''))}</div>
                   <div>短链：{escape(row.get('tracking_url', ''))}</div>
                   <div>帖子：{escape(row.get('post_url', ''))}</div>
                   <div>素材：{escape(row.get('media_path', ''))}</div>
