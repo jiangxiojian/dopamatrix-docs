@@ -15,6 +15,7 @@
 ### Changed
 
 - 发布后 URL 识别补充 Facebook Business Suite 内容日历场景：当页面只有 `business.facebook.com/latest/insights/object_insights/?content_id=...` 链接时，脚本会结合当前页 `asset_id` 推导 `facebook.com/<page_id>/posts/<content_id>`。
+- Facebook 识别规则过滤 `business.facebook.com/latest/posts/...` 这类 Business Suite 导航 URL，避免把 `published_posts`、`ab_testing` 等栏目路径误判为平台 post id。
 
 ## 2026-08-18
 

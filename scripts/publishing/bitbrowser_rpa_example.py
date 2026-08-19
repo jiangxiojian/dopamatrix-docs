@@ -727,6 +727,8 @@ def extract_platform_post_id(url: str, platform: str) -> str:
         return ""
 
     if platform_key == "facebook":
+        if "business.facebook.com" in netloc:
+            return ""
         query_map = parse_qs(query, keep_blank_values=True)
         for pattern in (
             r"/posts/([^/?#]+)",
@@ -763,6 +765,8 @@ def normalize_post_url(url: str, platform: str) -> str:
         return urlunsplit((scheme, netloc, path, "", ""))
 
     if platform_key == "facebook":
+        if "business.facebook.com" in netloc:
+            return ""
         lower_path = path.lower()
         if any(keyword in lower_path for keyword in ("/composer", "latest/composer", "/stories/create")):
             return ""
