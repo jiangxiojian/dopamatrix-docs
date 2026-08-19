@@ -28,7 +28,16 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from bitbrowser_rpa_example import (  # noqa: E402
+    BitBrowserClient,
+    DEFAULT_ACCOUNT_LEDGER_FILENAME,
+    DEFAULT_BIT_API,
     append_jsonl_log,
+    connect_browser_context,
+    detect_post_url_in_context,
+    extract_platform_post_id,
+    load_account_ledger,
+    normalize_platform_name,
+    select_account_entry,
     update_publish_plan_row,
     write_summary_csv,
 )
@@ -77,6 +86,8 @@ class WorkbenchConfig:
     log_jsonl: Path
     summary_csv: Path
     account_health_csv: Path
+    account_ledger_csv: Path
+    bit_api: str
     operator: str
     open_browser: bool = False
 
@@ -129,6 +140,7 @@ class WorkbenchState:
             config.log_jsonl.parent.resolve(),
             config.summary_csv.parent.resolve(),
             config.account_health_csv.parent.resolve(),
+            config.account_ledger_csv.parent.resolve(),
         ]
 
     def all_rows(self) -> list[dict[str, str]]:
@@ -160,6 +172,8 @@ class WorkbenchState:
                 "log_jsonl": str(self.config.log_jsonl),
                 "summary_csv": str(self.config.summary_csv),
                 "account_health_csv": str(self.config.account_health_csv),
+                "account_ledger_csv": str(self.config.account_ledger_csv),
+                "bit_api": self.config.bit_api,
             },
             "counts": dict(counts),
             "platforms": dict(platforms),
@@ -173,6 +187,21 @@ class WorkbenchState:
                 return row
         raise WorkbenchError(f"publish_id not found: {publish_id}")
 
+    def resolve_profile_id(self, task: dict[str, str], body: dict[str, Any] | None = None) -> str:
+        body = body or {}
+        profile_id = clean_text(body.get("profile_id")) or task.get("profile_id", "") or task.get("browser_profile_id", "")
+        if profile_id:
+            return profile_id
+        account_key = clean_text(body.get("account_key")) or task.get("account_key", "")
+        platform = normalize_platform_name(clean_text(body.get("platform")) or task.get("platform", ""))
+        if not account_key:
+            return ""
+        if not self.config.account_ledger_csv.is_file():
+            return ""
+        entries = load_account_ledger(self.config.account_ledger_csv)
+        entry = select_account_entry(entries, platform, account_key=account_key)
+        return entry.profile_id if entry else ""
+
     def backfill(self, body: dict[str, Any]) -> dict[str, Any]:
         publish_id = clean_text(body.get("publish_id"))
         status = clean_text(body.get("status")).upper()
@@ -184,6 +213,7 @@ class WorkbenchState:
         task = self.find_task(publish_id)
         checked_at = now_text()
         post_url = clean_text(body.get("post_url"))
+        platform_post_id = clean_text(body.get("platform_post_id"))
         published_at = clean_text(body.get("published_at"))
         manual_operator = clean_text(body.get("manual_operator")) or self.config.operator
         manual_note = clean_text(body.get("manual_note"))
@@ -194,6 +224,8 @@ class WorkbenchState:
             raise WorkbenchError("PUBLISHED_MANUAL requires post_url.")
         if status == "PUBLISHED_MANUAL" and not published_at:
             published_at = checked_at
+        if status == "PUBLISHED_MANUAL" and not platform_post_id and post_url:
+            platform_post_id = extract_platform_post_id(post_url, task.get("platform", ""))
         if status == "FAILED" and not error_type:
             error_type = "MANUAL_FAILED"
         if status in {"PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "READY"}:
@@ -205,6 +237,7 @@ class WorkbenchState:
             "last_result_status": status,
             "last_result_at": checked_at,
             "post_url": post_url if status == "PUBLISHED_MANUAL" else "",
+            "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
             "published_at": published_at if status == "PUBLISHED_MANUAL" else "",
             "manual_operator": manual_operator,
             "manual_checked_at": checked_at,
@@ -228,6 +261,7 @@ class WorkbenchState:
             "result": {
                 "status": status,
                 "post_url": updates["post_url"],
+                "platform_post_id": updates["platform_post_id"],
                 "published_at": updates["published_at"],
                 "manual_operator": manual_operator,
                 "manual_checked_at": checked_at,
@@ -240,6 +274,63 @@ class WorkbenchState:
         }
         append_jsonl_log(self.config.log_jsonl, payload)
         return {"updated": updated, "task": self.find_task(publish_id)}
+
+    def detect_post_url(self, body: dict[str, Any]) -> dict[str, Any]:
+        publish_id = clean_text(body.get("publish_id"))
+        if not publish_id:
+            raise WorkbenchError("publish_id is required.")
+        task = self.find_task(publish_id)
+        platform = normalize_platform_name(clean_text(body.get("platform")) or task.get("platform", ""))
+        profile_id = self.resolve_profile_id(task, body)
+        if not profile_id:
+            raise WorkbenchError("profile_id is required.")
+
+        bit = BitBrowserClient(self.config.bit_api)
+        health = bit.health()
+        opened = bit.open_profile(profile_id)
+        pw = None
+        browser = None
+        try:
+            pw, browser, context = connect_browser_context(opened.cdp_url)
+            result = detect_post_url_in_context(context, platform)
+            result["detection_status"] = "POST_URL_DETECTED" if result.get("detected") else "POST_URL_NOT_FOUND"
+            result["status"] = task.get("status", "") or "PREPARED"
+            payload = {
+                "plan": {
+                    "publish_id": publish_id,
+                    "plan_csv": str(self.config.plan_csv),
+                    "platform": task.get("platform", ""),
+                    "client_id": task.get("client_id", ""),
+                    "product_id": task.get("product_id", ""),
+                    "account_key": task.get("account_key", ""),
+                    "profile_id": profile_id,
+                    "media_path": task.get("media_path", ""),
+                    "attribution_token": task.get("attribution_token", ""),
+                },
+                "bitbrowser": {
+                    "health": health,
+                    "opened_profile": {
+                        "profile_id": opened.profile_id,
+                        "cdp_source": opened.cdp_source,
+                    },
+                    "tab_trace": {"before_detection": result.get("scanned_tabs", [])},
+                },
+                "result": result,
+            }
+            if result.get("detected"):
+                append_jsonl_log(self.config.log_jsonl, payload)
+            return {
+                "task": task,
+                "profile_id": profile_id,
+                "opened_profile": {
+                    "profile_id": opened.profile_id,
+                    "cdp_source": opened.cdp_source,
+                },
+                "result": result,
+            }
+        finally:
+            if pw is not None:
+                pw.stop()
 
     def account_health(self, body: dict[str, Any]) -> dict[str, Any]:
         publish_id = clean_text(body.get("publish_id"))
@@ -466,6 +557,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         <span>日志：${{esc(sources.log_jsonl)}}</span>
         <span>汇总：${{esc(sources.summary_csv)}}</span>
         <span>账号健康：${{esc(sources.account_health_csv)}}</span>
+        <span>账号台账：${{esc(sources.account_ledger_csv)}}</span>
+        <span>比特 API：${{esc(sources.bit_api)}}</span>
       `;
       document.querySelector('#stats').innerHTML = `
         <div class="stat"><strong>${{state.tasks.length}}</strong>任务</div>
@@ -481,7 +574,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     function taskSearchText(task) {{
       return [
         task.publish_id, task.platform, task.status, task.account_key, task.profile_name,
-        task.client_id, task.product_id, task.title, task.media_path, task.tracking_url,
+        task.profile_id, task.client_id, task.product_id, task.title, task.media_path,
+        task.tracking_url, task.post_url, task.platform_post_id,
         task.error_type, task.error_message, task.manual_note
       ].join(' ').toLowerCase();
     }}
@@ -531,6 +625,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
               <div class="meta">
                 <span>账号：${{esc(task.account_key)}}</span>
                 <span>窗口：${{esc(task.profile_name)}}</span>
+                <span>窗口ID：${{esc(task.profile_id)}}</span>
                 <span>客户：${{esc(task.client_id)}}</span>
                 <span>产品：${{esc(task.product_id)}}</span>
                 <span>上传：${{esc(task.uploaded)}}</span>
@@ -540,6 +635,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
               <div class="paths">
                 <div>短链：${{esc(task.tracking_url)}}</div>
                 <div>帖子：${{esc(task.post_url)}}</div>
+                <div>帖子ID：${{esc(task.platform_post_id)}}</div>
+                <div>发布时间：${{esc(task.published_at)}}</div>
                 <div>素材：${{esc(task.media_path)}}</div>
                 <div>截图：${{esc(task.screenshot)}}</div>
                 <div>错误：${{esc(task.error_type)}} ${{esc(task.error_message)}}</div>
@@ -558,12 +655,14 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                     </label>
                     <label>操作人<input name="${{fieldName(task.publish_id, 'operator')}}" value="${{operator}}"></label>
                     <label class="wide">帖子 URL<input name="${{fieldName(task.publish_id, 'post_url')}}" value="${{esc(task.post_url)}}"></label>
-                    <label>发布时间<input type="datetime-local" name="${{fieldName(task.publish_id, 'published_at')}}" value=""></label>
+                    <label>帖子 ID<input name="${{fieldName(task.publish_id, 'platform_post_id')}}" value="${{esc(task.platform_post_id)}}"></label>
+                    <label>发布时间<input name="${{fieldName(task.publish_id, 'published_at')}}" value="${{esc(task.published_at || '')}}" placeholder="YYYY-MM-DDTHH:MM:SS"></label>
                     <label>错误类型<input name="${{fieldName(task.publish_id, 'error_type')}}" value="${{esc(task.error_type)}}"></label>
                     <label class="wide">备注<textarea name="${{fieldName(task.publish_id, 'manual_note')}}">${{esc(task.manual_note)}}</textarea></label>
                     <label class="wide">错误信息<textarea name="${{fieldName(task.publish_id, 'error_message')}}">${{esc(task.error_message)}}</textarea></label>
                   </div>
                   <div class="actions" style="margin-top:8px">
+                    <button class="soft" data-action="detect" data-id="${{publishId}}">识别帖子 URL</button>
                     <button class="primary" data-action="backfill" data-id="${{publishId}}">写回状态</button>
                     <button class="soft" data-action="ready" data-id="${{publishId}}">加入重试队列</button>
                     <button class="danger" data-action="reject" data-id="${{publishId}}">不发布</button>
@@ -600,12 +699,18 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       return el ? el.value.trim() : '';
     }}
 
+    function setValue(id, name, text) {{
+      const el = document.querySelector(`[name="${{CSS.escape(fieldName(id, name))}}"]`);
+      if (el) el.value = text || '';
+    }}
+
     async function submitBackfill(id, forcedStatus = '') {{
       const status = forcedStatus || value(id, 'status');
       const body = {{
         publish_id: id,
         status,
         post_url: value(id, 'post_url'),
+        platform_post_id: value(id, 'platform_post_id'),
         published_at: value(id, 'published_at'),
         manual_operator: value(id, 'operator'),
         manual_note: value(id, 'manual_note'),
@@ -615,6 +720,30 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       await api('/api/backfill', {{ method: 'POST', body: JSON.stringify(body) }});
       toast(`已写回 ${{id}} -> ${{status}}`);
       await load();
+    }}
+
+    async function detectPostUrl(id) {{
+      const task = state.tasks.find((item) => item.publish_id === id) || {{}};
+      const body = {{
+        publish_id: id,
+        platform: task.platform,
+        account_key: task.account_key,
+        profile_id: task.profile_id
+      }};
+      const response = await api('/api/detect-post-url', {{ method: 'POST', body: JSON.stringify(body) }});
+      const result = response.result || {{}};
+      if (!result.detected) {{
+        toast('没有在当前标签页识别到公开帖子 URL', true);
+        return;
+      }}
+      setValue(id, 'status', 'PUBLISHED_MANUAL');
+      setValue(id, 'post_url', result.post_url || '');
+      setValue(id, 'platform_post_id', result.platform_post_id || '');
+      setValue(id, 'published_at', result.published_at || '');
+      const note = value(id, 'manual_note');
+      const detectedNote = `自动识别：${{result.source || ''}} tab=${{result.tab_index || ''}}`;
+      setValue(id, 'manual_note', note ? `${{note}}\n${{detectedNote}}` : detectedNote);
+      toast(`已识别帖子 URL：${{result.platform_post_id || result.post_url}}`);
     }}
 
     async function submitHealth(id) {{
@@ -650,6 +779,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       const id = button.dataset.id;
       try {{
         if (button.dataset.action === 'backfill') await submitBackfill(id);
+        if (button.dataset.action === 'detect') await detectPostUrl(id);
         if (button.dataset.action === 'ready') await submitBackfill(id, 'READY');
         if (button.dataset.action === 'reject') await submitBackfill(id, 'REJECTED_MANUAL');
         if (button.dataset.action === 'health') await submitHealth(id);
@@ -716,6 +846,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/account-health":
                 json_response(self, self.state.account_health(body))
                 return
+            if parsed.path == "/api/detect-post-url":
+                json_response(self, self.state.detect_post_url(body))
+                return
             if parsed.path == "/api/export-summary":
                 include_history = bool(body.get("include_history"))
                 json_response(self, self.state.export_summary(include_history=include_history))
@@ -731,6 +864,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--log-jsonl", help="publish_logs.jsonl path")
     parser.add_argument("--summary-csv", help="publish_summary.csv path")
     parser.add_argument("--account-health-csv", help="Account health CSV path")
+    parser.add_argument("--account-ledger", help="Account ledger CSV path")
+    parser.add_argument("--bit-api", default=DEFAULT_BIT_API, help=f"BitBrowser local API URL. Default: {DEFAULT_BIT_API}")
     parser.add_argument("--operator", default="", help="Default manual operator name")
     parser.add_argument("--host", default=DEFAULT_HOST, help="HTTP bind host")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="HTTP port")
@@ -749,11 +884,18 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
         if args.account_health_csv
         else plan_csv.parent / DEFAULT_ACCOUNT_HEALTH
     )
+    account_ledger_csv = (
+        Path(args.account_ledger).expanduser().resolve()
+        if args.account_ledger
+        else plan_csv.parent / DEFAULT_ACCOUNT_LEDGER_FILENAME
+    )
     return WorkbenchConfig(
         plan_csv=plan_csv,
         log_jsonl=log_jsonl,
         summary_csv=summary_csv,
         account_health_csv=account_health_csv,
+        account_ledger_csv=account_ledger_csv,
+        bit_api=args.bit_api,
         operator=args.operator,
         open_browser=args.open_browser,
     )

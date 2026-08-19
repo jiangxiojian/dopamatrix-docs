@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -106,6 +106,7 @@ PUBLISH_PLAN_FIELDS = [
     "error_type",
     "error_message",
     "post_url",
+    "platform_post_id",
     "published_at",
     "manual_operator",
     "manual_checked_at",
@@ -136,6 +137,7 @@ SUMMARY_FIELDS = [
     "media_processing_signal",
     "processing_wait_seconds",
     "post_url",
+    "platform_post_id",
     "published_at",
     "manual_operator",
     "manual_checked_at",
@@ -153,6 +155,7 @@ SUMMARY_FIELDS = [
 SUMMARY_LATEST_OUTCOME_FIELDS = {
     "status",
     "post_url",
+    "platform_post_id",
     "published_at",
     "manual_operator",
     "manual_checked_at",
@@ -184,6 +187,7 @@ SUMMARY_PLAN_COLUMNS = {
     "scheduled_at": ("scheduled_at", "排期时间"),
     "status": ("status", "状态"),
     "post_url": ("post_url", "帖子链接", "发布链接"),
+    "platform_post_id": ("platform_post_id", "平台post_id", "平台帖子ID", "post_id"),
     "published_at": ("published_at", "发布时间"),
     "manual_operator": ("manual_operator", "人工操作人"),
     "manual_checked_at": ("manual_checked_at", "人工确认时间"),
@@ -201,6 +205,7 @@ PLAN_STATUS_COLUMNS = {
     "error_type": ("错误类型",),
     "error_message": ("错误信息",),
     "post_url": ("帖子链接", "发布链接"),
+    "platform_post_id": ("平台post_id", "平台帖子ID", "post_id"),
     "published_at": ("发布时间",),
     "manual_operator": ("人工操作人",),
     "manual_checked_at": ("人工确认时间",),
@@ -574,6 +579,12 @@ def _first_nonempty(row: dict[str, str], *keys: str) -> str:
     return ""
 
 
+def clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _truthy(text: str) -> bool:
     if text is None:
         return False
@@ -648,6 +659,244 @@ def snapshot_tabs(context: Any, selected_page: Any | None = None) -> list[dict[s
             }
         )
     return tabs
+
+
+def normalize_platform_name(platform: str) -> str:
+    key = (platform or "").strip().lower()
+    return {"fb": "facebook", "tt": "tiktok", "tk": "tiktok"}.get(key, key)
+
+
+def _empty_post_candidate() -> dict[str, Any]:
+    return {
+        "post_url": "",
+        "platform_post_id": "",
+        "source": "",
+        "tab_index": 0,
+        "tab_url": "",
+        "text": "",
+        "score": -1,
+    }
+
+
+def _post_candidate_score(source: str, tab_url: str) -> int:
+    key = source.strip().lower()
+    score = {
+        "tab_url": 320,
+        "canonical": 260,
+        "og:url": 250,
+        "twitter:url": 240,
+        "anchor": 200,
+        "link": 180,
+    }.get(key, 150)
+    tab_url_lower = tab_url.lower()
+    if "latest/composer" in tab_url_lower or "/composer" in tab_url_lower:
+        score -= 70
+    if "/upload" in tab_url_lower or "/draft" in tab_url_lower:
+        score -= 30
+    return score
+
+
+def _candidate_url_parts(url: str) -> tuple[str, str, str, str]:
+    cleaned = str(url or "").strip()
+    if not cleaned:
+        return "", "", "", ""
+    if cleaned.startswith("//"):
+        cleaned = f"https:{cleaned}"
+    try:
+        parts = urlsplit(cleaned)
+    except Exception:
+        return "", "", "", ""
+    return parts.scheme or "https", parts.netloc.lower(), parts.path, parts.query
+
+
+def extract_platform_post_id(url: str, platform: str) -> str:
+    platform_key = normalize_platform_name(platform)
+    scheme, netloc, path, query = _candidate_url_parts(url)
+    if not scheme or not netloc:
+        return ""
+
+    if platform_key == "tiktok":
+        if "tiktok.com" not in netloc:
+            return ""
+        match = re.search(r"/(?:@[^/?#]+/)?(?:video|photo)/(\d+)", path, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        match = re.search(r"/v/(\d+)", path, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return ""
+
+    if platform_key == "facebook":
+        query_map = parse_qs(query, keep_blank_values=True)
+        for pattern in (
+            r"/posts/([^/?#]+)",
+            r"/reels?/([^/?#]+)",
+            r"/videos/([^/?#]+)",
+        ):
+            match = re.search(pattern, path, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        for key in ("story_fbid", "fbid", "v"):
+            values = query_map.get(key, [])
+            if values and values[0].strip():
+                return values[0].strip()
+        return ""
+
+    return ""
+
+
+def normalize_post_url(url: str, platform: str) -> str:
+    platform_key = normalize_platform_name(platform)
+    scheme, netloc, path, query = _candidate_url_parts(url)
+    if not scheme or not netloc:
+        return ""
+
+    path = re.sub(r"/{2,}", "/", path)
+    path = path.rstrip("/") or "/"
+    query_map = parse_qs(query, keep_blank_values=True)
+
+    if platform_key == "tiktok":
+        if "tiktok.com" not in netloc:
+            return ""
+        if not extract_platform_post_id(url, platform_key):
+            return ""
+        return urlunsplit((scheme, netloc, path, "", ""))
+
+    if platform_key == "facebook":
+        lower_path = path.lower()
+        if any(keyword in lower_path for keyword in ("/composer", "latest/composer", "/stories/create")):
+            return ""
+        post_id = extract_platform_post_id(url, platform_key)
+        if not post_id:
+            return ""
+        if (
+            (lower_path.endswith("story.php") or lower_path.endswith("permalink.php"))
+            and query_map.get("story_fbid")
+            and query_map.get("id")
+        ):
+            query_text = urlencode(
+                [("story_fbid", query_map["story_fbid"][0]), ("id", query_map["id"][0])],
+                doseq=False,
+            )
+            return urlunsplit((scheme, netloc, "/permalink.php", query_text, ""))
+        if lower_path.endswith("photo.php") and query_map.get("fbid") and query_map.get("id"):
+            query_text = urlencode(
+                [("fbid", query_map["fbid"][0]), ("id", query_map["id"][0])],
+                doseq=False,
+            )
+            return urlunsplit((scheme, netloc, "/photo.php", query_text, ""))
+        if lower_path.endswith("/watch") and query_map.get("v"):
+            query_text = urlencode([("v", query_map["v"][0])], doseq=False)
+            return urlunsplit((scheme, netloc, path, query_text, ""))
+        return urlunsplit((scheme, netloc, path, "", ""))
+
+    return ""
+
+
+def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> list[dict[str, Any]]:
+    platform_key = normalize_platform_name(platform)
+    tab_url = sanitize_tab_url(getattr(page, "url", ""))
+    candidates: list[dict[str, Any]] = []
+
+    def add_candidate(url: str, source: str, text: str = "") -> None:
+        normalized = normalize_post_url(url, platform_key)
+        if not normalized:
+            return
+        post_id = extract_platform_post_id(normalized, platform_key)
+        if not post_id:
+            return
+        candidate = {
+            "post_url": normalized,
+            "platform_post_id": post_id,
+            "source": source,
+            "tab_index": tab_index,
+            "tab_url": tab_url,
+            "text": text.strip()[:160],
+            "score": _post_candidate_score(source, tab_url),
+        }
+        candidates.append(candidate)
+
+    add_candidate(getattr(page, "url", ""), "tab_url")
+
+    try:
+        items = page.evaluate(
+            """() => {
+              const items = [];
+              const push = (source, url, text = '') => {
+                if (!url) return;
+                items.push({source, url: String(url), text: String(text || '')});
+              };
+              document.querySelectorAll('link[rel="canonical"][href]').forEach((node) => {
+                push('canonical', node.href || node.getAttribute('href') || '', node.getAttribute('href') || '');
+              });
+              document.querySelectorAll('meta[property="og:url"][content], meta[name="twitter:url"][content]').forEach((node) => {
+                push(node.getAttribute('property') || node.getAttribute('name') || 'meta', node.content || node.getAttribute('content') || '', node.content || '');
+              });
+              document.querySelectorAll('a[href]').forEach((node) => {
+                push('anchor', node.href || node.getAttribute('href') || '', node.innerText || node.getAttribute('aria-label') || node.textContent || '');
+              });
+              return items.slice(0, 500);
+            }"""
+        )
+    except Exception:
+        items = []
+
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            add_candidate(item.get("url", ""), str(item.get("source", "anchor")), str(item.get("text", "")))
+
+    deduped: dict[tuple[str, str], dict[str, Any]] = {}
+    for candidate in candidates:
+        key = (candidate["post_url"], candidate["platform_post_id"])
+        current = deduped.get(key)
+        if current is None or candidate["score"] > current["score"]:
+            deduped[key] = candidate
+    return sorted(
+        deduped.values(),
+        key=lambda item: (-int(item.get("score", 0)), int(item.get("tab_index", 0)), item.get("post_url", "")),
+    )
+
+
+def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
+    checked_at = datetime.now().isoformat(timespec="seconds")
+    scanned_tabs = snapshot_tabs(context)
+    candidates: list[dict[str, Any]] = []
+    for tab_index, page in enumerate(context.pages, start=1):
+        try:
+            candidates.extend(collect_post_url_candidates(page, platform, tab_index))
+        except Exception as exc:
+            candidates.append(
+                {
+                    **_empty_post_candidate(),
+                    "source": f"error:{type(exc).__name__}",
+                    "tab_index": tab_index,
+                    "tab_url": sanitize_tab_url(getattr(page, "url", "")),
+                    "text": str(exc)[:160],
+                }
+            )
+
+    viable = [item for item in candidates if item.get("post_url") and item.get("platform_post_id")]
+    viable.sort(
+        key=lambda item: (-int(item.get("score", 0)), int(item.get("tab_index", 0)), item.get("post_url", "")),
+    )
+    best = viable[0] if viable else _empty_post_candidate()
+    best_result = {
+        "detected": bool(viable),
+        "checked_at": checked_at,
+        "platform": normalize_platform_name(platform),
+        "post_url": best.get("post_url", ""),
+        "platform_post_id": best.get("platform_post_id", ""),
+        "published_at": checked_at if viable else "",
+        "source": best.get("source", ""),
+        "tab_index": best.get("tab_index", 0),
+        "tab_url": best.get("tab_url", ""),
+        "text": best.get("text", ""),
+        "candidates": viable[:10],
+        "scanned_tabs": scanned_tabs,
+    }
+    return best_result
 
 
 def read_jsonl_log(log_path: Path) -> list[dict[str, Any]]:
@@ -1040,6 +1289,13 @@ def load_publish_plan(csv_path: Path) -> list[PublishPlanEntry]:
     return entries
 
 
+def find_publish_plan_entry(csv_path: Path, publish_id: str) -> PublishPlanEntry:
+    for entry in load_publish_plan(csv_path):
+        if entry.publish_id == publish_id:
+            return entry
+    raise BitBrowserError(f"publish_id not found in plan: {publish_id}")
+
+
 def select_account_entry(
     entries: list[AccountLedgerEntry],
     platform: str,
@@ -1354,6 +1610,7 @@ def build_generated_plan_row(
         "error_type": "",
         "error_message": "",
         "post_url": "",
+        "platform_post_id": "",
         "published_at": "",
         "manual_operator": "",
         "manual_checked_at": "",
@@ -2698,6 +2955,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"Publish summary written: {summary_csv}")
         print(f"Rows: {len(rows)}")
         return 0
+    if args.detect_post_url:
+        return detect_post_url_for_plan(args)
     if args.backfill_publish_id:
         backfill_manual_publish(args)
         return 0
@@ -2723,12 +2982,18 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         raise SystemExit("--post-url is required for PUBLISHED_MANUAL backfill.")
 
     plan_path = Path(args.plan_csv).expanduser().resolve()
+    plan_entry = find_publish_plan_entry(plan_path, args.backfill_publish_id)
+    platform = normalize_platform_name(args.platform or plan_entry.platform)
     checked_at = datetime.now().isoformat(timespec="seconds")
+    platform_post_id = clean_text(args.platform_post_id)
+    if status == "PUBLISHED_MANUAL" and not platform_post_id and args.post_url:
+        platform_post_id = extract_platform_post_id(args.post_url, platform)
     updates = {
         "status": status,
         "last_result_status": status,
         "last_result_at": checked_at,
         "post_url": args.post_url or "",
+        "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
         "published_at": args.published_at or (checked_at if status == "PUBLISHED_MANUAL" else ""),
         "manual_operator": args.manual_operator or "",
         "manual_checked_at": checked_at,
@@ -2744,6 +3009,7 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         "result": {
             "status": status,
             "post_url": args.post_url or "",
+            "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
             "published_at": updates["published_at"],
             "manual_operator": args.manual_operator or "",
             "manual_checked_at": checked_at,
@@ -2756,6 +3022,115 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
 
     print("Manual publish backfilled:", json.dumps(updated, ensure_ascii=False))
+
+
+def detect_post_url_for_plan(args: argparse.Namespace) -> int:
+    if not args.plan_csv:
+        raise SystemExit("--plan-csv is required when using --detect-post-url.")
+    if not args.backfill_publish_id:
+        raise SystemExit("--backfill-publish-id is required when using --detect-post-url.")
+
+    plan_path = Path(args.plan_csv).expanduser().resolve()
+    plan_entry = find_publish_plan_entry(plan_path, args.backfill_publish_id)
+    platform = normalize_platform_name(args.platform or plan_entry.platform)
+    if platform not in SUPPORTED_PLATFORMS:
+        raise SystemExit(f"Unsupported platform for detection: {platform}")
+
+    profile_id = args.profile_id or plan_entry.browser_profile_id
+    account_entry: AccountLedgerEntry | None = None
+    if not profile_id:
+        ledger_path: Path | None = None
+        if args.account_ledger:
+            ledger_path = Path(args.account_ledger).expanduser().resolve()
+        else:
+            maybe_media_path = resolve_path_maybe_relative(plan_entry.media_path, plan_path.parent)
+            ledger_path = resolve_account_ledger_for_task(maybe_media_path, None, plan_path.parent)
+        if ledger_path is not None and ledger_path.is_file():
+            account_entries = load_account_ledger(ledger_path)
+            account_entry = select_account_entry(
+                account_entries,
+                platform,
+                profile_id=None,
+                account_key=plan_entry.account_key or args.account_key,
+            )
+            if account_entry is not None:
+                profile_id = account_entry.profile_id
+
+    if not profile_id:
+        raise SystemExit(
+            "profile-id is required unless it can be loaded from the plan row or account ledger."
+        )
+
+    bit = BitBrowserClient(args.bit_api)
+    health = bit.health()
+    opened = bit.open_profile(profile_id)
+    pw = None
+    browser = None
+    result: dict[str, Any]
+    try:
+        pw, browser, context = connect_browser_context(opened.cdp_url)
+        result = detect_post_url_in_context(context, platform)
+        result["detection_status"] = "POST_URL_DETECTED" if result.get("detected") else "POST_URL_NOT_FOUND"
+        result["status"] = plan_entry.status or "PREPARED"
+        if result.get("detected") and args.detect_write_back:
+            result["status"] = "PUBLISHED_MANUAL"
+        payload = {
+            "plan": {
+                "started_at": result["checked_at"],
+                "publish_id": plan_entry.publish_id,
+                "client_id": plan_entry.client_id,
+                "product_id": plan_entry.product_id,
+                "platform": platform,
+                "content_type": plan_entry.content_type,
+                "profile_id": profile_id,
+                "account_key": plan_entry.account_key,
+                "account_platform": account_entry.platform if account_entry else "",
+                "profile_name": account_entry.profile_name if account_entry else "",
+                "media_path": plan_entry.media_path,
+                "plan_csv": str(plan_path),
+                "plan_row_status": plan_entry.status,
+            },
+            "bitbrowser": {
+                "health": health,
+                "opened_profile": {
+                    "profile_id": opened.profile_id,
+                    "cdp_source": opened.cdp_source,
+                },
+                "tab_trace": {"before_detection": snapshot_tabs(context)},
+            },
+            "result": result,
+        }
+        print(json.dumps(payload["result"], ensure_ascii=False, indent=2))
+
+        if result.get("detected") and args.detect_write_back:
+            checked_at = result["checked_at"]
+            updates = {
+                "status": "PUBLISHED_MANUAL",
+                "last_result_status": "PUBLISHED_MANUAL",
+                "last_result_at": checked_at,
+                "post_url": result.get("post_url", ""),
+                "platform_post_id": result.get("platform_post_id", ""),
+                "published_at": result.get("published_at", checked_at),
+                "manual_operator": args.manual_operator or "",
+                "manual_checked_at": checked_at,
+                "manual_note": args.manual_note
+                or "自动识别发布后帖子链接并回填。",
+            }
+            updated = update_publish_plan_row(plan_path, plan_entry.publish_id, updates)
+            print("Detected post backfilled:", json.dumps(updated, ensure_ascii=False))
+        elif args.detect_write_back:
+            raise SystemExit("No post URL detected in the current BitBrowser tabs.")
+
+        if args.log_json:
+            write_json_log(Path(args.log_json).expanduser().resolve(), payload)
+            print(f"JSON log written: {Path(args.log_json).expanduser().resolve()}")
+        if args.log_jsonl and result.get("detected"):
+            append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
+            print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
+        return 0
+    finally:
+        if pw is not None:
+            pw.stop()
 
 
 def clean_blank_tabs(args: argparse.Namespace) -> None:
@@ -3105,12 +3480,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Manually backfill a publish_id after the operator has published or rejected it.",
     )
     parser.add_argument(
+        "--detect-post-url",
+        action="store_true",
+        help="Scan the current BitBrowser tabs for a published post URL/post id without clicking publish.",
+    )
+    parser.add_argument(
+        "--detect-write-back",
+        action="store_true",
+        help="With --detect-post-url, write the detected post URL back to the plan as PUBLISHED_MANUAL.",
+    )
+    parser.add_argument(
         "--backfill-status",
         choices=MANUAL_BACKFILL_STATUSES,
         default="PUBLISHED_MANUAL",
         help="Manual backfill status. Defaults to PUBLISHED_MANUAL.",
     )
     parser.add_argument("--post-url", help="Published post URL for manual backfill.")
+    parser.add_argument("--platform-post-id", help="Platform post ID for manual backfill or detection write-back.")
     parser.add_argument("--published-at", help="Published time for manual backfill.")
     parser.add_argument("--manual-operator", help="Operator name for manual backfill.")
     parser.add_argument("--manual-note", help="Manual note for backfill.")

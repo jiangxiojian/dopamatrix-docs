@@ -33,6 +33,7 @@ FIELDS = [
     "profile_name",
     "client_id",
     "product_id",
+    "profile_id",
     "media_path",
     "title",
     "uploaded",
@@ -46,6 +47,8 @@ FIELDS = [
     "error_message",
     "screenshot",
     "post_url",
+    "platform_post_id",
+    "published_at",
     "started_at",
     "finished_at",
     "manual_operator",
@@ -102,6 +105,7 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
         "status": first_nonempty(row, "status", "状态"),
         "account_key": first_nonempty(row, "account_key", "账号键", "account_code"),
         "profile_name": first_nonempty(row, "profile_name", "窗口名称"),
+        "profile_id": first_nonempty(row, "browser_profile_id", "profile_id", "窗口ID", "browser_id"),
         "client_id": first_nonempty(row, "client_id", "客户ID"),
         "product_id": first_nonempty(row, "product_id", "产品ID", "sku"),
         "media_path": first_nonempty(row, "media_path", "素材路径", "media", "path"),
@@ -112,6 +116,8 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
         "error_type": first_nonempty(row, "error_type", "错误类型"),
         "error_message": first_nonempty(row, "error_message", "错误信息"),
         "post_url": first_nonempty(row, "post_url", "帖子链接", "发布链接"),
+        "platform_post_id": first_nonempty(row, "platform_post_id", "平台post_id", "平台帖子ID", "post_id"),
+        "published_at": first_nonempty(row, "published_at", "发布时间"),
         "manual_operator": first_nonempty(row, "manual_operator", "人工操作人"),
         "manual_checked_at": first_nonempty(row, "manual_checked_at", "人工确认时间"),
         "manual_note": first_nonempty(row, "manual_note", "人工备注"),
@@ -122,6 +128,7 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
 def normalize_summary_row(row: dict[str, str]) -> dict[str, str]:
     normalized = {field: row.get(field, "").strip() for field in FIELDS}
     normalized["profile_name"] = row.get("profile_name", "").strip()
+    normalized["profile_id"] = row.get("profile_id", "").strip()
     return normalized
 
 
@@ -250,13 +257,26 @@ def build_backfill_command(row: dict[str, str], status: str, log_jsonl: str = ""
     )
     if status == "PUBLISHED_MANUAL":
         post_url = row.get("post_url", "") or "PASTE_POST_URL_HERE"
-        command += (
-            f"--post-url \"{post_url}\" "
-            "--published-at \"YYYY-MM-DDTHH:MM:SS\" "
-        )
+        platform_post_id = row.get("platform_post_id", "")
+        command += f"--post-url \"{post_url}\" "
+        if platform_post_id:
+            command += f"--platform-post-id \"{platform_post_id}\" "
+        command += "--published-at \"YYYY-MM-DDTHH:MM:SS\" "
     command += (
         "--manual-operator operator "
         "--manual-note \"人工检查后回填\""
+    )
+    return append_log_arg(command, log_jsonl)
+
+
+def build_detect_command(row: dict[str, str], log_jsonl: str = "") -> str:
+    plan_csv = row.get("plan_csv", "")
+    publish_id = row.get("publish_id", "")
+    command = (
+        "python docs\\scripts\\publishing\\bitbrowser_rpa_example.py "
+        f"--plan-csv \"{plan_csv}\" "
+        f"--backfill-publish-id {publish_id} "
+        "--detect-post-url "
     )
     return append_log_arg(command, log_jsonl)
 
@@ -301,6 +321,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                 "content_type",
                 "facebook_content_mode",
                 "account_key",
+                "profile_id",
                 "profile_name",
                 "client_id",
                 "product_id",
@@ -308,6 +329,9 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                 "media_path",
                 "tracking_url",
                 "composer_url",
+                "post_url",
+                "platform_post_id",
+                "published_at",
                 "attribution_token",
                 "error_type",
                 "manual_note",
@@ -342,6 +366,8 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <div>处理信号：{escape(row.get('media_processing_signal', ''))}</div>
                   <div>短链：{escape(row.get('tracking_url', ''))}</div>
                   <div>帖子：{escape(row.get('post_url', ''))}</div>
+                  <div>帖子ID：{escape(row.get('platform_post_id', ''))}</div>
+                  <div>发布时间：{escape(row.get('published_at', ''))}</div>
                   <div>素材：{escape(row.get('media_path', ''))}</div>
                   <div>截图：{escape(row.get('screenshot', ''))}</div>
                 </div>
@@ -355,6 +381,9 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <label>已发布</label>
                   <button class="copy-btn" data-copy="{escape(publish_cmd)}">复制已发布回填</button>
                   <textarea readonly>{escape(publish_cmd)}</textarea>
+                  <label>识别帖子</label>
+                  <button class="copy-btn" data-copy="{escape(build_detect_command(row, log_jsonl))}">复制识别命令</button>
+                  <textarea readonly>{escape(build_detect_command(row, log_jsonl))}</textarea>
                   <label>不发布</label>
                   <button class="copy-btn" data-copy="{escape(reject_cmd)}">复制不发布回填</button>
                   <textarea readonly>{escape(reject_cmd)}</textarea>

@@ -1,8 +1,15 @@
 # 文档变更日志
 
-> 更新时间：2026-08-18
+> 更新时间：2026-08-19
 > 文档类型：变更日志  
 > 状态：草案
+
+## 2026-08-19
+
+### Verified
+
+- 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 跑 `--detect-post-url` 真机扫描，当前只看到 `console.bitbrowser.net`、Facebook composer 和 TikTok upload 三个页签，未识别到公开帖子 URL；脚本能干净返回 `POST_URL_NOT_FOUND`。
+- 启动本地确认工作台并调用 `/api/tasks`、`/api/detect-post-url`，验证工作台能读取计划表和账号台账，也能通过接口扫描同一 BitBrowser 窗口并返回 `POST_URL_NOT_FOUND`。
 
 ## 2026-08-18
 
@@ -11,11 +18,14 @@
 - 新增 `scripts/publishing/rpa_workbench_server.py`，可启动本地 `127.0.0.1` 确认工作台，读取 `publish_plan.csv`、JSONL、汇总 CSV 和截图。
 - 新增 `scripts/publishing/run_workbench.cmd`，支持双击后粘贴计划表路径，或把 `publish_plan.csv` 拖到脚本上启动确认工作台。
 - 确认工作台支持在页面里写回 `PUBLISHED_MANUAL/REJECTED_MANUAL/FAILED/READY`，追加 JSONL，记录账号健康备注，并从 JSONL 导出 `publish_summary.csv`。
+- `bitbrowser_rpa_example.py` 新增 `--detect-post-url` 基础能力，可从当前 BitBrowser 标签页识别帖子 URL 和 platform post id；手工回填也支持写入 `platform_post_id`。
+- `rpa_workbench_server.py` 新增“识别帖子 URL”按钮，识别成功后可先填回 `post_url / platform_post_id / published_at`，再由运营手动点“写回状态”。
 
 ### Verified
 
 - 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test` 测试投放包启动本地确认工作台，验证 `/api/tasks` 可读取任务，`/api/export-summary` 可导出 6 行汇总 CSV。
 - 使用 `--task-timeout-seconds 1 --debug-task-sleep-seconds 3` 模拟慢任务，验证批量计划模式会强杀超时子进程并继续收尾，且不会被带 emoji 文案触发的 GBK 编码问题卡住。
+- 使用本地样本 URL 解析脚本，验证 TikTok `@user/video/<id>`、Facebook `posts/reel/permalink` 场景都能抽取 `platform_post_id`，并能过滤掉 `business.facebook.com/latest/composer` 这类非帖子页。
 
 ### Changed
 

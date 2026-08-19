@@ -399,7 +399,7 @@ python docs/scripts/publishing/rpa_workbench_server.py `
 
 确认工作台是本机 `127.0.0.1` 临时服务，不需要 DopaMatrix 主项目、不需要数据库。页面可读取计划表、JSONL、截图和汇总 CSV，并直接写回：
 
-- `PUBLISHED_MANUAL`：人工发布完成，写入帖子 URL、发布时间、操作人和备注。
+- `PUBLISHED_MANUAL`：人工发布完成，写入帖子 URL、平台 post id、发布时间、操作人和备注。
 - `REJECTED_MANUAL`：人工检查后决定不发布。
 - `FAILED`：人工确认失败，写入错误类型和错误信息。
 - `READY`：把失败或部分成功任务重新放回待重试队列。
@@ -408,7 +408,7 @@ python docs/scripts/publishing/rpa_workbench_server.py `
 
 ## 人工发布后回填
 
-脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
+脚本不会点最终发布按钮。人工检查并发布后，可以用回填命令把帖子链接、平台 post id 和人工状态写回 `publish_plan.csv`，同时追加到 JSONL：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
@@ -416,11 +416,14 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --backfill-publish-id PUB-FB-TEST-001 `
   --backfill-status PUBLISHED_MANUAL `
   --post-url "https://www.facebook.com/..." `
+  --platform-post-id "pfbid..." `
   --published-at "2026-08-13T16:30:00" `
   --manual-operator "operator-name" `
   --manual-note "人工检查无误后发布" `
   --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
 ```
+
+如果发布后当前标签页已经跳到了公开帖子，也可以先用 `--detect-post-url` 识别，再决定是否加 `--detect-write-back` 自动回写。
 
 当前支持的人工回填状态：
 
@@ -438,14 +441,14 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有读取 DopaMatrix 数据库。
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
-- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
+- 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接和 post id、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
 - 已支持批量计划模式单任务硬超时隔离；`--task-timeout-seconds` 大于 0 时，每条任务都会走独立子进程，超时会被强制终止并继续下一条。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
 - 没有处理所有平台弹窗。
 - 没有自动确认 Page 是否正确。
-- 没有自动读取发布后的 post URL。
 - 没有自动点击最终发布按钮。
+- 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
 
 生产化时需要补：
 
@@ -484,6 +487,7 @@ post_url 自动识别
 | RPA 操作台增强 | 已静态验证：批量彩排目录生成的 HTML 包含 6 条任务、状态/平台筛选、搜索框、复制按钮、JSONL 回填参数和失败/部分成功重试命令 |
 | Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
+| 发布后 URL 自动识别 | 已验证基础行为：本地样本 URL 能抽取 TK/FB post id；2026-08-19 目标窗口真机扫描当前只发现 BitBrowser console、FB composer、TK upload 页签，返回 `POST_URL_NOT_FOUND`，没有误写计划表 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 
 ## 下一步
@@ -491,7 +495,7 @@ post_url 自动识别
 1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
 2. 打开真实 Facebook Page 视频/Reels 入口，复制 URL 到 `composer_url` 后跑 1 条上传测试，仍停在发布前。
 3. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
-4. 继续增强 `RPA 发布操作台 V1`：从复制命令进化到能直接写回状态、记录账号健康备注和导出报告数据。
+4. 打开一个真实已发布 TK/FB 帖子页，再跑 `--detect-post-url`，确认能从平台真实页面回填 `post_url / platform_post_id / published_at`。
 
 ## 外部资料
 
