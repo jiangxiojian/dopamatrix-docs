@@ -10,6 +10,11 @@
 
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 跑 `--detect-post-url` 真机扫描，当前只看到 `console.bitbrowser.net`、Facebook composer 和 TikTok upload 三个页签，未识别到公开帖子 URL；脚本能干净返回 `POST_URL_NOT_FOUND`。
 - 启动本地确认工作台并调用 `/api/tasks`、`/api/detect-post-url`，验证工作台能读取计划表和账号台账，也能通过接口扫描同一 BitBrowser 窗口并返回 `POST_URL_NOT_FOUND`。
+- 人工点击 Facebook Page 发布后，Business Suite 跳到内容日历；脚本从 `object_insights?content_id=122106457737435838` 推导并回填公开帖子 URL：`https://www.facebook.com/1237975296070200/posts/122106457737435838`。
+
+### Changed
+
+- 发布后 URL 识别补充 Facebook Business Suite 内容日历场景：当页面只有 `business.facebook.com/latest/insights/object_insights/?content_id=...` 链接时，脚本会结合当前页 `asset_id` 推导 `facebook.com/<page_id>/posts/<content_id>`。
 
 ## 2026-08-18
 

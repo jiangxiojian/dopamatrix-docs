@@ -793,12 +793,39 @@ def normalize_post_url(url: str, platform: str) -> str:
     return ""
 
 
+def facebook_business_content_candidate(url: str, fallback_page_id: str = "") -> str:
+    scheme, netloc, path, query = _candidate_url_parts(url)
+    if "business.facebook.com" not in netloc:
+        return ""
+    lower_path = path.lower()
+    if "object_insights" not in lower_path and "/insights/" not in lower_path:
+        return ""
+    query_map = parse_qs(query, keep_blank_values=True)
+    content_id = (query_map.get("content_id") or [""])[0].strip()
+    if not content_id:
+        return ""
+    page_id = (query_map.get("asset_id") or [fallback_page_id])[0].strip()
+    if page_id:
+        return f"https://www.facebook.com/{page_id}/posts/{content_id}"
+    return f"https://www.facebook.com/{content_id}"
+
+
 def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> list[dict[str, Any]]:
     platform_key = normalize_platform_name(platform)
     tab_url = sanitize_tab_url(getattr(page, "url", ""))
+    tab_query = parse_qs(urlsplit(getattr(page, "url", "") or "").query, keep_blank_values=True)
+    fallback_facebook_page_id = (tab_query.get("asset_id") or [""])[0].strip()
     candidates: list[dict[str, Any]] = []
 
     def add_candidate(url: str, source: str, text: str = "") -> None:
+        if platform_key == "facebook":
+            business_candidate = facebook_business_content_candidate(
+                url,
+                fallback_page_id=fallback_facebook_page_id,
+            )
+            if business_candidate:
+                url = business_candidate
+                source = f"{source}:business_content_id"
         normalized = normalize_post_url(url, platform_key)
         if not normalized:
             return
