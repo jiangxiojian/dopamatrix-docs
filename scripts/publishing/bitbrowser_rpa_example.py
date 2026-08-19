@@ -78,6 +78,28 @@ PLATFORM_CODES = {
     "tiktok": "TK",
     "facebook": "FB",
 }
+TIKTOK_POST_QUERY_ID_KEYS = (
+    "item_id",
+    "itemId",
+    "item_id_str",
+    "itemIdStr",
+    "video_id",
+    "videoId",
+    "aweme_id",
+    "awemeId",
+    "share_item_id",
+    "content_id",
+)
+TIKTOK_USERNAME_QUERY_KEYS = (
+    "username",
+    "user",
+    "handle",
+    "author",
+    "authorUsername",
+    "author_unique_id",
+    "unique_id",
+    "uniqueId",
+)
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 PUBLISH_PLAN_FIELDS = [
@@ -687,6 +709,8 @@ def _post_candidate_score(source: str, tab_url: str) -> int:
         "twitter:url": 240,
         "anchor": 200,
         "link": 180,
+        "text:tiktok_public_url": 230,
+        "text:tiktok_item_id": 220,
     }.get(key, 150)
     tab_url_lower = tab_url.lower()
     if "latest/composer" in tab_url_lower or "/composer" in tab_url_lower:
@@ -709,6 +733,61 @@ def _candidate_url_parts(url: str) -> tuple[str, str, str, str]:
     return parts.scheme or "https", parts.netloc.lower(), parts.path, parts.query
 
 
+def _first_query_value(query_map: dict[str, list[str]], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        values = query_map.get(key, [])
+        if values and values[0].strip():
+            return values[0].strip()
+    lowered = {key.lower(): values for key, values in query_map.items()}
+    for key in keys:
+        values = lowered.get(key.lower(), [])
+        if values and values[0].strip():
+            return values[0].strip()
+    return ""
+
+
+def _clean_tiktok_post_id(value: str) -> str:
+    match = re.search(r"\b(\d{8,})\b", str(value or ""))
+    return match.group(1) if match else ""
+
+
+def _clean_tiktok_username(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = cleaned.lstrip("@").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._-]{2,64}", cleaned):
+        return ""
+    return cleaned
+
+
+def _tiktok_username_from_path(path: str) -> str:
+    match = re.search(r"/@([^/?#]+)/", path, re.IGNORECASE)
+    if not match:
+        return ""
+    return _clean_tiktok_username(match.group(1))
+
+
+def tiktok_post_id_from_query(query: str) -> str:
+    query_map = parse_qs(query, keep_blank_values=True)
+    return _clean_tiktok_post_id(_first_query_value(query_map, TIKTOK_POST_QUERY_ID_KEYS))
+
+
+def tiktok_username_from_query(query: str) -> str:
+    query_map = parse_qs(query, keep_blank_values=True)
+    return _clean_tiktok_username(_first_query_value(query_map, TIKTOK_USERNAME_QUERY_KEYS))
+
+
+def tiktok_public_url_from_parts(scheme: str, netloc: str, path: str, query: str) -> str:
+    post_id = tiktok_post_id_from_query(query)
+    if not post_id:
+        return ""
+    username = _tiktok_username_from_path(path) or tiktok_username_from_query(query)
+    if username:
+        return f"https://www.tiktok.com/@{username}/video/{post_id}"
+    return f"https://www.tiktok.com/player/v1/{post_id}"
+
+
 def extract_platform_post_id(url: str, platform: str) -> str:
     platform_key = normalize_platform_name(platform)
     scheme, netloc, path, query = _candidate_url_parts(url)
@@ -724,6 +803,12 @@ def extract_platform_post_id(url: str, platform: str) -> str:
         match = re.search(r"/v/(\d+)", path, re.IGNORECASE)
         if match:
             return match.group(1)
+        match = re.search(r"/player/v1/(\d+)", path, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        post_id = tiktok_post_id_from_query(query)
+        if post_id:
+            return post_id
         return ""
 
     if platform_key == "facebook":
@@ -762,6 +847,13 @@ def normalize_post_url(url: str, platform: str) -> str:
             return ""
         if not extract_platform_post_id(url, platform_key):
             return ""
+        if re.search(r"/(?:@[^/?#]+/)?(?:video|photo)/(\d+)", path, re.IGNORECASE):
+            return urlunsplit((scheme, netloc, path, "", ""))
+        if re.search(r"/(?:v|player/v1)/(\d+)", path, re.IGNORECASE):
+            return urlunsplit((scheme, netloc, path, "", ""))
+        public_url = tiktok_public_url_from_parts(scheme, netloc, path, query)
+        if public_url:
+            return public_url
         return urlunsplit((scheme, netloc, path, "", ""))
 
     if platform_key == "facebook":
@@ -866,7 +958,22 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
               document.querySelectorAll('a[href]').forEach((node) => {
                 push('anchor', node.href || node.getAttribute('href') || '', node.innerText || node.getAttribute('aria-label') || node.textContent || '');
               });
-              return items.slice(0, 500);
+              if (location.hostname.includes('tiktok.com')) {
+                const text = document.documentElement ? document.documentElement.innerText || '' : '';
+                const html = document.documentElement ? document.documentElement.innerHTML || '' : '';
+                const combined = `${text}\n${html}`;
+                const publicUrlPattern = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/(?:@[\\w.-]+\/(?:video|photo)\/\\d+|v\/\\d+|player\/v1\/\\d+)/gi;
+                for (const match of combined.matchAll(publicUrlPattern)) {
+                  push('text:tiktok_public_url', match[0], match[0]);
+                  if (items.length > 900) break;
+                }
+                const idPattern = /["']?(?:item_id|itemId|item_id_str|itemIdStr|video_id|videoId|aweme_id|awemeId|share_item_id|content_id)["']?\\s*[:=]\\s*["']?(\\d{8,})/gi;
+                for (const match of combined.matchAll(idPattern)) {
+                  push('text:tiktok_item_id', `https://www.tiktok.com/player/v1/${match[1]}`, match[0]);
+                  if (items.length > 980) break;
+                }
+              }
+              return items.slice(0, 1000);
             }"""
         )
     except Exception:

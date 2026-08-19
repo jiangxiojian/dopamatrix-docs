@@ -1,6 +1,6 @@
 # 待办清单
 
-> 更新时间：2026-08-14
+> 更新时间：2026-08-19
 > 文档类型：待办清单  
 > 状态：草案
 
@@ -25,6 +25,7 @@
 | P0 | 增加计划表状态回写 | 完成基础版 | 显式 `--write-plan-status` 后，把执行状态、截图和错误写回计划表。 |
 | P0 | 增加人工发布后回填命令 | 完成基础版 | 人工发布或拒绝后，可回填帖子链接、发布时间和备注。 |
 | P0 | 导出 RPA 发布汇总 CSV | 完成基础版 | 从 JSONL 生成 `publish_summary.csv`，并从计划表补齐客户、产品、短链和归因字段。 |
+| P1 | 导出客户报告种子 | 完成基础版 | 从 `publish_summary.csv` 生成 `customer_report_seed.csv` 和 `customer_report_overview.csv`，供客户报告网页和周报/月报接入。 |
 | P0 | 增加 RPA 异常分类 | 完成基础版 | 常见失败会写入稳定 `error_type`，例如 `BITBROWSER_CONNECTION`、`PROXY_CONNECTION_FAILED`、`TIKTOK_UPLOAD_NOT_CONFIRMED`、`FACEBOOK_UPLOAD_NOT_CONFIRMED`。 |
 | P0 | 支持 TK + FB 同窗口顺序执行 | 完成基础版 | 2026-08-14 已完成 3 条 TK + 3 条 FB 同窗口顺序彩排，均停在发布前且不覆盖 Tab。 |
 | P0 | 一键运行发布准备 | 完成基础版 | 直接运行脚本或双击 `.cmd`，自动发现 READY 计划；没有 READY 且只有一个安全投放包时先生成计划，再准备草稿。 |

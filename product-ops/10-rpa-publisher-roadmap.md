@@ -1,6 +1,6 @@
 # RPA 发布脚本建设计划
 
-> 更新时间：2026-08-14
+> 更新时间：2026-08-19
 > 文档类型：方案 / 待办拆解  
 > 状态：实施中  
 > 适用阶段：客户试点前  
@@ -36,6 +36,7 @@
 | 批量队列读取 | 已验证基础版 | 支持读取 READY/FAILED/PARTIAL 行，并用 `--limit`、`--only-publish-id`、`--only-platform` 限制执行范围；2026-08-14 已跑通 6 条 TK/FB 顺序彩排。 |
 | JSONL 汇总日志 | 已实现基础版 | 支持 `--log-jsonl` 追加 `PLANNED/PREPARED/FAILED` 记录；真实执行会记录 `duration_seconds`。 |
 | 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链、归因字段和执行耗时。 |
+| 客户报告种子导出 | 已实现基础版 | 可把 `publish_summary.csv` 再导出为 `customer_report_seed.csv` 和 `customer_report_overview.csv`，作为后续客户报告网页和周报/月报的桥接数据。 |
 | 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
 | 人工发布后回填 | 已实现基础版 | 支持 `--backfill-publish-id` 回填 `PUBLISHED_MANUAL/REJECTED_MANUAL`、帖子链接、发布时间、人工备注，并追加 JSONL。 |
 | 平台发布器拆分 | 已实现基础版 | 新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和注册表，主流程通过 `get_publisher(platform)` 调度平台逻辑。 |
@@ -60,7 +61,7 @@
 | TK + FB 顺序模式 | 3 条 TK + 3 条 FB 同窗口顺序彩排已通过；后续仍需真实多素材和更多账号覆盖。 | 一个素材包通常要同时发 TK 视频和 FB 图文，且必须保留前一条草稿给人工检查。 |
 | 发布计划格式 | 已能从交付包自动生成基础计划；还没有按账号每日上限、排期窗口、客户优先级和平台内容策略做智能分配。 | 运营手工整理容易出错，后续要把生成规则做得更像排产系统。 |
 | RPA 确认工作台生产化 | 本地服务 MVP 已能写回状态、记录账号健康、选择重试 READY 和导出汇总；还没有批量操作保护、权限、审计锁和更细的报告字段。 | 后续批量运营需要避免误点、误改和多人同时处理同一计划表。 |
-| 发布后回填 | 手工回填命令已完成；帖子 URL、发布时间、平台 post id 的自动识别已接入基础版，后续继续补更多真机样本。 | 报告、归因和客户交付都需要帖子链接和状态。 |
+| 发布后回填 | 手工回填命令已完成；帖子 URL、发布时间、平台 post id 的自动识别已接入基础版，TikTok 还支持从 Studio / Creator Center 查询参数提取 post id，后续继续补更多真机样本。 | 报告、归因和客户交付都需要帖子链接和状态。 |
 | Facebook 内容类型 | Page 图片帖和视频/Reels 草稿准备都已实机验证；脚本会在 `PREPARED` 前确认媒体处理完成。 | 后续还需要更多 Page、更多账号和更多素材样本。 |
 | Facebook 上传稳定性 | 当前 Page 图片帖多轮 `auto` 测试已通过；FB 视频/Reels 草稿准备也已跑通一次。 | FB 页面不稳定时容易弹系统文件选择器，必须确保脚本不会卡死整组任务。 |
 | TikTok 多样本稳定性 | 已完成 3 条重复视频批量彩排；还需要真实多素材覆盖。 | 需要连续样本证明选择器和弹窗处理可靠。 |
@@ -248,4 +249,4 @@ E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv
 
 ## 下一步
 
-下一步建议转向批量稳定性：给每条计划任务加硬超时隔离和更明确的失败续跑策略。确认工作台已经能承接人工结果，后续另一路再补发布后 URL、发布时间和平台 post id 的自动识别。
+下一步建议继续补批量稳定性和报告桥接：在保持硬超时隔离和失败续跑策略的同时，把客户报告页真正接到 `customer_report_seed.csv` / `customer_report_overview.csv`，再继续补发布后 URL、发布时间和平台 post id 的更多样本自动识别。

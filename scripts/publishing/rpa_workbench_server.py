@@ -41,6 +41,11 @@ from bitbrowser_rpa_example import (  # noqa: E402
     update_publish_plan_row,
     write_summary_csv,
 )
+from rpa_report_export import (  # noqa: E402
+    DEFAULT_DETAIL as DEFAULT_CUSTOMER_REPORT_DETAIL,
+    DEFAULT_OVERVIEW as DEFAULT_CUSTOMER_REPORT_OVERVIEW,
+    export_customer_report as write_customer_report_seed,
+)
 from rpa_operator_console import (  # noqa: E402
     latest_jsonl_rows,
     merge_rows,
@@ -85,6 +90,8 @@ class WorkbenchConfig:
     plan_csv: Path
     log_jsonl: Path
     summary_csv: Path
+    customer_report_detail_csv: Path
+    customer_report_overview_csv: Path
     account_health_csv: Path
     account_ledger_csv: Path
     bit_api: str
@@ -139,6 +146,8 @@ class WorkbenchState:
             config.plan_csv.parent.resolve(),
             config.log_jsonl.parent.resolve(),
             config.summary_csv.parent.resolve(),
+            config.customer_report_detail_csv.parent.resolve(),
+            config.customer_report_overview_csv.parent.resolve(),
             config.account_health_csv.parent.resolve(),
             config.account_ledger_csv.parent.resolve(),
         ]
@@ -171,6 +180,8 @@ class WorkbenchState:
                 "plan_csv": str(self.config.plan_csv),
                 "log_jsonl": str(self.config.log_jsonl),
                 "summary_csv": str(self.config.summary_csv),
+                "customer_report_detail_csv": str(self.config.customer_report_detail_csv),
+                "customer_report_overview_csv": str(self.config.customer_report_overview_csv),
                 "account_health_csv": str(self.config.account_health_csv),
                 "account_ledger_csv": str(self.config.account_ledger_csv),
                 "bit_api": self.config.bit_api,
@@ -355,6 +366,16 @@ class WorkbenchState:
         rows = write_summary_csv(self.config.log_jsonl, self.config.summary_csv, include_history=include_history)
         return {"summary_csv": str(self.config.summary_csv), "rows": len(rows)}
 
+    def export_customer_report(self) -> dict[str, Any]:
+        summary_rows = write_summary_csv(self.config.log_jsonl, self.config.summary_csv, include_history=False)
+        result = write_customer_report_seed(
+            self.config.summary_csv,
+            self.config.customer_report_detail_csv,
+            self.config.customer_report_overview_csv,
+        )
+        result["summary_rows"] = len(summary_rows)
+        return result
+
     def resolve_artifact(self, path_text: str) -> Path:
         if not path_text:
             raise WorkbenchError("path is required.")
@@ -501,6 +522,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     <select id="platformFilter"><option value="ALL">全部平台</option></select>
     <button id="reload" class="soft">刷新</button>
     <button id="exportSummary" class="soft">导出汇总 CSV</button>
+    <button id="exportReport" class="soft">导出客户报告种子</button>
   </nav>
   <main id="tasks"></main>
   <div class="toast" id="toast"></div>
@@ -556,6 +578,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         <span>计划表：${{esc(sources.plan_csv)}}</span>
         <span>日志：${{esc(sources.log_jsonl)}}</span>
         <span>汇总：${{esc(sources.summary_csv)}}</span>
+        <span>报告明细：${{esc(sources.customer_report_detail_csv)}}</span>
+        <span>报告总览：${{esc(sources.customer_report_overview_csv)}}</span>
         <span>账号健康：${{esc(sources.account_health_csv)}}</span>
         <span>账号台账：${{esc(sources.account_ledger_csv)}}</span>
         <span>比特 API：${{esc(sources.bit_api)}}</span>
@@ -797,6 +821,15 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         toast(error.message || String(error), true);
       }}
     }});
+    document.querySelector('#exportReport').addEventListener('click', async () => {{
+      try {{
+        const result = await api('/api/export-customer-report', {{ method: 'POST', body: JSON.stringify({{}}) }});
+        toast(`已导出报告种子：明细 ${{result.detail_rows}} 行，总览 ${{result.overview_rows}} 行`);
+        await load();
+      }} catch (error) {{
+        toast(error.message || String(error), true);
+      }}
+    }});
     searchEl.addEventListener('input', renderTasks);
     statusFilter.addEventListener('change', renderTasks);
     platformFilter.addEventListener('change', renderTasks);
@@ -853,6 +886,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 include_history = bool(body.get("include_history"))
                 json_response(self, self.state.export_summary(include_history=include_history))
                 return
+            if parsed.path == "/api/export-customer-report":
+                json_response(self, self.state.export_customer_report())
+                return
             json_response(self, {"error": "not found"}, status=404)
         except Exception as exc:
             json_response(self, {"error": str(exc)}, status=400)
@@ -863,6 +899,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plan-csv", required=True, help="publish_plan.csv path")
     parser.add_argument("--log-jsonl", help="publish_logs.jsonl path")
     parser.add_argument("--summary-csv", help="publish_summary.csv path")
+    parser.add_argument("--customer-report-detail-csv", help="Customer report detail seed CSV path")
+    parser.add_argument("--customer-report-overview-csv", help="Customer report overview CSV path")
     parser.add_argument("--account-health-csv", help="Account health CSV path")
     parser.add_argument("--account-ledger", help="Account ledger CSV path")
     parser.add_argument("--bit-api", default=DEFAULT_BIT_API, help=f"BitBrowser local API URL. Default: {DEFAULT_BIT_API}")
@@ -879,6 +917,16 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
         raise SystemExit(f"publish_plan.csv not found: {plan_csv}")
     log_jsonl = Path(args.log_jsonl).expanduser().resolve() if args.log_jsonl else plan_csv.parent / DEFAULT_JSONL
     summary_csv = Path(args.summary_csv).expanduser().resolve() if args.summary_csv else plan_csv.parent / DEFAULT_SUMMARY
+    customer_report_detail_csv = (
+        Path(args.customer_report_detail_csv).expanduser().resolve()
+        if args.customer_report_detail_csv
+        else summary_csv.parent / DEFAULT_CUSTOMER_REPORT_DETAIL
+    )
+    customer_report_overview_csv = (
+        Path(args.customer_report_overview_csv).expanduser().resolve()
+        if args.customer_report_overview_csv
+        else summary_csv.parent / DEFAULT_CUSTOMER_REPORT_OVERVIEW
+    )
     account_health_csv = (
         Path(args.account_health_csv).expanduser().resolve()
         if args.account_health_csv
@@ -893,6 +941,8 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
         plan_csv=plan_csv,
         log_jsonl=log_jsonl,
         summary_csv=summary_csv,
+        customer_report_detail_csv=customer_report_detail_csv,
+        customer_report_overview_csv=customer_report_overview_csv,
         account_health_csv=account_health_csv,
         account_ledger_csv=account_ledger_csv,
         bit_api=args.bit_api,

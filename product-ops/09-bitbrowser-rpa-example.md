@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-08-14
+> 更新时间：2026-08-19
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -442,6 +442,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
 - 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接和 post id、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
+- 已支持把 `publish_summary.csv` 再导出为客户报告种子文件 `customer_report_seed.csv` 和 `customer_report_overview.csv`，方便后续客户报告网页和周报/月报接入。
 - 已支持批量计划模式单任务硬超时隔离；`--task-timeout-seconds` 大于 0 时，每条任务都会走独立子进程，超时会被强制终止并继续下一条。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
@@ -487,15 +488,17 @@ post_url 自动识别
 | RPA 操作台增强 | 已静态验证：批量彩排目录生成的 HTML 包含 6 条任务、状态/平台筛选、搜索框、复制按钮、JSONL 回填参数和失败/部分成功重试命令 |
 | Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
-| 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；2026-08-19 人工点击 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
+| 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；TikTok 现在也能从 Studio / Creator Center 查询参数里的 `item_id`、`video_id`、`aweme_id` 等字段提取 post id，2026-08-19 已用真实 `tiktokstudio/content` 页面回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`；同日 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
+| TikTok Studio / Creator Center 真实页面是否能稳定从查询参数回收 post id | 已验证 | 2026-08-19 使用真实 `tiktokstudio/content` 页面中的 `item_id`/`video_id` 结果回收 post id，并成功回填公开视频链接 |
 
 ## 下一步
 
 1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
 2. 打开真实 Facebook Page 视频/Reels 入口，复制 URL 到 `composer_url` 后跑 1 条上传测试，仍停在发布前。
-3. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
-4. 继续用更多真实 FB Page 和 TK 帖子样本验证 `--detect-post-url`，特别是 Reels、快拍、公开视频页和不同语言界面。
+3. 先把客户报告网页接上 `customer_report_seed.csv` / `customer_report_overview.csv` 的字段口径，再继续补周报/月报导出。
+4. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
+5. 继续用更多真实 FB Page 和 TK 帖子样本验证 `--detect-post-url`，特别是 Reels、快拍、公开视频页和不同语言界面。
 
 ## 外部资料
 

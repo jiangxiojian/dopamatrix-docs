@@ -1,6 +1,6 @@
 # 客户报告网页
 
-> 更新时间：2026-07-27  
+> 更新时间：2026-08-19
 > 状态：规划草案
 
 ## 目标
@@ -234,5 +234,7 @@ creative_id / video_id
 6. 与上期对比。
 7. 导出 CSV/Excel。
 8. 最近同步时间和数据来源。
+
+短期桥接数据源先用 `publish_summary.csv`，再叠加 `customer_report_seed.csv` 和 `customer_report_overview.csv` 作为报告网页和周报/月报的输入口径。
 
 后续再加留存曲线、账号健康、爆款基因图、成本、收入和 ROI。

@@ -6,8 +6,17 @@
 
 ## 2026-08-19
 
+### Added
+
+- 新增 `scripts/publishing/rpa_report_export.py`，可把 `publish_summary.csv` 进一步导出为客户报告种子文件：`customer_report_seed.csv` 和 `customer_report_overview.csv`。
+- `rpa_workbench_server.py` 新增“导出客户报告种子”按钮和对应接口，可在确认工作台里先刷新汇总，再一键生成报告明细和总览。
+- TikTok 发布后 URL 识别补充 Studio / Creator Center 查询参数场景：脚本现在能从 `item_id`、`video_id`、`aweme_id` 等参数提取 post id，并在缺少用户名时回退到 `player/v1/<post_id>` 可定位链接。
+- 真实 TikTok Studio / Creator Center 发布后页面样本仍待补充，用于确认查询参数回收规则在实机环境下稳定生效。
+
 ### Verified
 
+- 2026-08-19 实机发布并回收 TikTok 公开视频：`PUB-TK-TEST-001` 从 `tiktokstudio/content` 页面识别并回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`，随后页面状态变为 `Public`。
+- 2026-08-19 实机发布并回收 Facebook Page 视频/Reels：`PUB-FB-20260814-002-63893D` 从 Business Suite 内容日历识别并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838`。
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 跑 `--detect-post-url` 真机扫描，当前只看到 `console.bitbrowser.net`、Facebook composer 和 TikTok upload 三个页签，未识别到公开帖子 URL；脚本能干净返回 `POST_URL_NOT_FOUND`。
 - 启动本地确认工作台并调用 `/api/tasks`、`/api/detect-post-url`，验证工作台能读取计划表和账号台账，也能通过接口扫描同一 BitBrowser 窗口并返回 `POST_URL_NOT_FOUND`。
 - 人工点击 Facebook Page 发布后，Business Suite 跳到内容日历；脚本从 `object_insights?content_id=122106457737435838` 推导并回填公开帖子 URL：`https://www.facebook.com/1237975296070200/posts/122106457737435838`。
