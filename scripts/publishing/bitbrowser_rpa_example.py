@@ -74,6 +74,17 @@ FACEBOOK_UPLOAD_MODES = ("auto", "input-only", "file-chooser")
 FACEBOOK_CONTENT_MODES = ("post", "reel", "story")
 MANUAL_BACKFILL_STATUSES = ("PUBLISHED_MANUAL", "REJECTED_MANUAL", "PREPARED", "FAILED")
 SUPPORTED_PLATFORMS = ("tiktok", "facebook")
+SAFE_POPUP_BUTTON_SELECTORS = (
+    "button:has-text('Got it')",
+    "button:has-text('Not now')",
+    "button:has-text('Maybe later')",
+)
+SAFE_CANCEL_DIALOG_PATTERNS = (
+    r"turn on notifications",
+    r"allow notifications",
+    r"sync contacts",
+    r"save your login info",
+)
 PLATFORM_CODES = {
     "tiktok": "TK",
     "facebook": "FB",
@@ -2188,21 +2199,29 @@ def wait_for_facebook_media_processing(
 
 def dismiss_safe_popups(page) -> list[str]:
     clicked: list[str] = []
-    selectors = [
-        "button:has-text('Cancel')",
-        "button:has-text('Got it')",
-        "button:has-text('Not now')",
-        "button:has-text('Maybe later')",
-    ]
     for _ in range(5):
         clicked_in_pass = False
-        for selector in selectors:
+        for selector in SAFE_POPUP_BUTTON_SELECTORS:
             locator = page.locator(selector)
             try:
                 if locator.count() == 0:
                     continue
                 locator.first.click(timeout=3000)
                 clicked.append(selector)
+                clicked_in_pass = True
+                page.wait_for_timeout(1000)
+            except Exception:
+                continue
+        for pattern in SAFE_CANCEL_DIALOG_PATTERNS:
+            try:
+                dialog = page.get_by_role("dialog").filter(has_text=re.compile(pattern, re.IGNORECASE))
+                if dialog.count() == 0:
+                    continue
+                cancel = dialog.first.get_by_role("button", name=re.compile(r"^Cancel$", re.IGNORECASE))
+                if cancel.count() == 0:
+                    continue
+                cancel.first.click(timeout=3000)
+                clicked.append(f"dialog:{pattern}:Cancel")
                 clicked_in_pass = True
                 page.wait_for_timeout(1000)
             except Exception:

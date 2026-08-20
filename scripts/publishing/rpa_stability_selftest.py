@@ -97,10 +97,10 @@ def test_popup_dismissal() -> None:
     clicked = dismiss_safe_popups(page)
     assert_equal(
         clicked,
-        ["button:has-text('Cancel')", "button:has-text('Maybe later')"],
+        ["button:has-text('Maybe later')"],
         "Dismiss safe popup buttons",
     )
-    assert_equal(page.waits, [1000, 1000], "Wait between popup clicks")
+    assert_equal(page.waits, [1000], "Wait between popup clicks")
 
 
 def test_content_check_popup() -> None:

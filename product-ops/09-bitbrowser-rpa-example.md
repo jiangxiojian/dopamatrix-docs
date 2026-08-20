@@ -447,6 +447,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
 - 没有处理所有平台弹窗。
+- 弹窗库只自动关闭明确低风险按钮，例如 `Got it`、`Not now`、`Maybe later`；普通 `Cancel` 不作为全局安全按钮，避免误关发布编辑器。
 - 没有自动确认 Page 是否正确。
 - 没有自动点击最终发布按钮。
 - 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
