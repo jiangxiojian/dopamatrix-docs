@@ -126,6 +126,7 @@ PUBLISH_PLAN_FIELDS = [
     "last_result_at",
     "result_screenshot",
     "error_type",
+    "error_action",
     "error_message",
     "post_url",
     "platform_post_id",
@@ -166,6 +167,7 @@ SUMMARY_FIELDS = [
     "manual_note",
     "screenshot",
     "error_type",
+    "error_action",
     "error_message",
     "duration_seconds",
     "started_at",
@@ -183,6 +185,7 @@ SUMMARY_LATEST_OUTCOME_FIELDS = {
     "manual_checked_at",
     "manual_note",
     "error_type",
+    "error_action",
     "error_message",
     "finished_at",
 }
@@ -216,6 +219,7 @@ SUMMARY_PLAN_COLUMNS = {
     "manual_note": ("manual_note", "人工备注"),
     "screenshot": ("result_screenshot", "结果截图"),
     "error_type": ("error_type", "错误类型"),
+    "error_action": ("error_action", "处理建议", "处置建议"),
     "error_message": ("error_message", "错误信息"),
 }
 PLAN_STATUS_COLUMNS = {
@@ -225,6 +229,7 @@ PLAN_STATUS_COLUMNS = {
     "last_result_at": ("最后结果时间",),
     "result_screenshot": ("结果截图",),
     "error_type": ("错误类型",),
+    "error_action": ("处理建议", "处置建议"),
     "error_message": ("错误信息",),
     "post_url": ("帖子链接", "发布链接"),
     "platform_post_id": ("平台post_id", "平台帖子ID", "post_id"),
@@ -1136,6 +1141,8 @@ def flatten_publish_log(payload: dict[str, Any]) -> dict[str, str]:
     row = {field: _summary_value(payload, field) for field in SUMMARY_FIELDS}
     if not row["publish_id"]:
         row["publish_id"] = "(manual-entry)"
+    if not row.get("error_action"):
+        row["error_action"] = recommend_error_action(row.get("error_type", ""), row.get("status", ""))
     return row
 
 
@@ -1290,12 +1297,14 @@ def build_plan_status_updates(payload: dict[str, Any]) -> dict[str, str]:
     result = payload.get("result") or {}
     finished_at = result.get("finished_at") or datetime.now().isoformat(timespec="seconds")
     status = str(result.get("status") or "FAILED")
+    error_type = str(result.get("error_type") or "")
     return {
         "status": status,
         "last_result_status": status,
         "last_result_at": str(finished_at),
         "result_screenshot": str(result.get("screenshot") or ""),
-        "error_type": str(result.get("error_type") or ""),
+        "error_type": error_type,
+        "error_action": str(result.get("error_action") or recommend_error_action(error_type, status)),
         "error_message": str(result.get("error_message") or ""),
     }
 
@@ -2488,6 +2497,52 @@ def classify_error(error_type: str, error_message: str, platform: str = "") -> s
     return error_type or "UNKNOWN_ERROR"
 
 
+def recommend_error_action(error_type: str, status: str = "") -> str:
+    error_key = (error_type or "").strip().upper()
+    status_key = (status or "").strip().upper()
+    if status_key == "PUBLISHED_MANUAL":
+        return "DONE"
+    if status_key == "PREPARED":
+        return "HUMAN_PUBLISH_CHECK"
+    if status_key in {"REJECTED_MANUAL", "SKIPPED"}:
+        return "NO_ACTION"
+    if status_key in {"READY", "PLANNED", "RUNNING"} and not error_key:
+        return "PENDING"
+    if status_key in {"FAILED", "PARTIAL"} and not error_key:
+        return "HUMAN_REVIEW"
+    if not error_key:
+        return ""
+
+    if error_key in {"TASK_TIMEOUT", "BROWSER_TARGET_CLOSED", "PLATFORM_TIMEOUT"}:
+        return "RETRY_TASK"
+    if error_key in {"BITBROWSER_CONNECTION", "BITBROWSER_PROFILE_OPEN", "LOCAL_DEPENDENCY_MISSING"}:
+        return "CHECK_LOCAL_BROWSER"
+    if error_key == "PROXY_CONNECTION_FAILED":
+        return "CHECK_PROXY"
+    if error_key in {"LOGIN_REQUIRED", "ACCOUNT_VERIFICATION", "TIKTOK_CONTENT_CHECK_SETTING", "ACCOUNT_SETTING_CHECK"}:
+        return "HUMAN_ACCOUNT_CHECK"
+    if error_key == "FACEBOOK_PAGE_ACCESS":
+        return "CHECK_PAGE_ACCESS"
+    if error_key in {"MEDIA_PATH_INVALID", "PLAN_CONFIG_INVALID", "UNSUPPORTED_PLATFORM"}:
+        return "FIX_PLAN"
+    if error_key == "MEDIA_FORMAT_UNSUPPORTED":
+        return "FIX_MEDIA"
+    if error_key == "PLATFORM_RATE_LIMIT_OR_RESTRICTION":
+        return "PAUSE_ACCOUNT"
+    if error_key in {
+        "FACEBOOK_FILE_CHOOSER_TIMEOUT",
+        "TIKTOK_UPLOAD_NOT_CONFIRMED",
+        "FACEBOOK_UPLOAD_NOT_CONFIRMED",
+        "UPLOAD_NOT_CONFIRMED",
+        "FACEBOOK_MEDIA_PROCESSING_NOT_CONFIRMED",
+        "TIKTOK_CAPTION_NOT_FILLED",
+        "FACEBOOK_CAPTION_NOT_FILLED",
+        "CAPTION_NOT_FILLED",
+    }:
+        return "RETRY_OR_MANUAL_CHECK"
+    return "HUMAN_REVIEW"
+
+
 def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
     platform = str(result.get("platform", "")).lower()
     if not result.get("uploaded"):
@@ -2534,6 +2589,7 @@ def append_plan_failure(
     media_path: str = "",
 ) -> None:
     started_at = task_started_at or datetime.now().isoformat(timespec="seconds")
+    classified_error = classify_error(error_type, error_message, entry.platform)
     payload = {
         "plan": {
             "started_at": started_at,
@@ -2551,7 +2607,8 @@ def append_plan_failure(
         },
         "result": {
             "status": "FAILED",
-            "error_type": classify_error(error_type, error_message, entry.platform),
+            "error_type": classified_error,
+            "error_action": recommend_error_action(classified_error, "FAILED"),
             "error_message": error_message,
             "finished_at": datetime.now().isoformat(timespec="seconds"),
             "duration_seconds": duration_seconds_since(started_at),
@@ -2571,9 +2628,11 @@ def write_failure_logs(
     page: Any | None = None,
     screenshot_path: Path | None = None,
 ) -> dict[str, Any]:
+    classified_error = classify_error(error_type, error_message, str(plan.get("platform", "")))
     result = {
         "status": "FAILED",
-        "error_type": classify_error(error_type, error_message, str(plan.get("platform", ""))),
+        "error_type": classified_error,
+        "error_action": recommend_error_action(classified_error, "FAILED"),
         "raw_error_type": error_type,
         "error_message": error_message,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
@@ -2789,7 +2848,10 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         if result["status"] == "PARTIAL":
             partial_error_type, partial_error_message = classify_partial_result(result)
             result["error_type"] = partial_error_type
+            result["error_action"] = recommend_error_action(partial_error_type, "PARTIAL")
             result["error_message"] = partial_error_message
+        else:
+            result["error_action"] = recommend_error_action("", result["status"])
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
@@ -3186,6 +3248,7 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         "status": status,
         "last_result_status": status,
         "last_result_at": checked_at,
+        "error_action": recommend_error_action("", status),
         "post_url": args.post_url or "",
         "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
         "published_at": args.published_at or (checked_at if status == "PUBLISHED_MANUAL" else ""),
@@ -3202,6 +3265,7 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         },
         "result": {
             "status": status,
+            "error_action": updates["error_action"],
             "post_url": args.post_url or "",
             "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
             "published_at": updates["published_at"],
@@ -3268,6 +3332,10 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
         result["status"] = plan_entry.status or "PREPARED"
         if result.get("detected") and args.detect_write_back:
             result["status"] = "PUBLISHED_MANUAL"
+        result["error_action"] = recommend_error_action(
+            "",
+            "PUBLISHED_MANUAL" if result.get("detected") else result["status"],
+        )
         payload = {
             "plan": {
                 "started_at": result["checked_at"],
@@ -3302,6 +3370,7 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
                 "status": "PUBLISHED_MANUAL",
                 "last_result_status": "PUBLISHED_MANUAL",
                 "last_result_at": checked_at,
+                "error_action": recommend_error_action("", "PUBLISHED_MANUAL"),
                 "post_url": result.get("post_url", ""),
                 "platform_post_id": result.get("platform_post_id", ""),
                 "published_at": result.get("published_at", checked_at),

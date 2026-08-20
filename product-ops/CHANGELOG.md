@@ -16,6 +16,7 @@
 - 新增 `scripts/publishing/rpa_customer_report_page_selftest.py`，用于离线检查客户报告页概览区、批量样本页和单条已发布页。
 - 新增 `scripts/publishing/rpa_selftest.py`，用于一条命令串起 URL 回收、客户报告页和弹窗/异常分类三组离线回归。
 - 新增 `scripts/publishing/rpa_stability_selftest.py`，用于离线检查安全弹窗、内容检查弹窗和异常分类规则。
+- RPA 发布脚本新增 `error_action` 处置建议字段，按 `error_type/status` 派生 `CHECK_PROXY`、`HUMAN_ACCOUNT_CHECK`、`RETRY_TASK`、`FIX_PLAN` 等运营动作，并带入计划表、汇总 CSV、操作台、确认工作台和客户报告页。
 - URL 识别自测补充 TikTok photo/player 和 Facebook reels/story/photo/watch 样本，覆盖更多常见发布后链接变体。
 - TikTok 发布后 URL 识别补充 Studio / Creator Center 查询参数场景：脚本现在能从 `item_id`、`video_id`、`aweme_id` 等参数提取 post id，并在缺少用户名时回退到 `player/v1/<post_id>` 可定位链接。
 - 真实 TikTok Studio / Creator Center 发布后页面样本仍待补充，用于确认查询参数回收规则在实机环境下稳定生效。

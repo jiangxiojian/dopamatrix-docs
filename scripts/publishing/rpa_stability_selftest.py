@@ -15,6 +15,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
     classify_partial_result,
     dismiss_safe_popups,
     handle_content_check_popup,
+    recommend_error_action,
 )
 
 
@@ -150,6 +151,34 @@ def test_error_classification() -> None:
     )
 
 
+def test_error_action_recommendation() -> None:
+    assert_equal(
+        recommend_error_action("PROXY_CONNECTION_FAILED", "FAILED"),
+        "CHECK_PROXY",
+        "Proxy failure action",
+    )
+    assert_equal(
+        recommend_error_action("ACCOUNT_VERIFICATION", "FAILED"),
+        "HUMAN_ACCOUNT_CHECK",
+        "Account verification action",
+    )
+    assert_equal(
+        recommend_error_action("FACEBOOK_FILE_CHOOSER_TIMEOUT", "FAILED"),
+        "RETRY_OR_MANUAL_CHECK",
+        "File chooser timeout action",
+    )
+    assert_equal(
+        recommend_error_action("", "PREPARED"),
+        "HUMAN_PUBLISH_CHECK",
+        "Prepared draft action",
+    )
+    assert_equal(
+        recommend_error_action("", "PUBLISHED_MANUAL"),
+        "DONE",
+        "Published action",
+    )
+
+
 def test_partial_result_classification() -> None:
     assert_equal(
         classify_partial_result({"platform": "tiktok", "uploaded": False}),
@@ -168,6 +197,7 @@ def main() -> int:
         test_popup_dismissal,
         test_content_check_popup,
         test_error_classification,
+        test_error_action_recommendation,
         test_partial_result_classification,
     ]
     for test in tests:

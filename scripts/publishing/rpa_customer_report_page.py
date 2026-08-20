@@ -53,6 +53,7 @@ DETAIL_FIELDS = [
     "manual_checked_at",
     "manual_note",
     "error_type",
+    "error_action",
     "error_message",
     "views",
     "impressions",
@@ -193,6 +194,7 @@ def normalized_detail_rows(rows: list[dict[str, str]], base_dir: Path) -> list[d
                 "post_url",
                 "tracking_url",
                 "error_type",
+                "error_action",
                 "error_message",
             )
         ).lower()
@@ -725,6 +727,7 @@ def render_html(
         const screenshot = row.screenshot_uri ? link(row.screenshot_uri, '截图') : '<span class="muted">-</span>';
         const media = row.media_uri ? link(row.media_uri, '素材') : esc(row.media_path || '-');
         const note = row.report_note || row.error_message || row.manual_note || '';
+        const action = row.error_action ? `<br><small>建议：${{esc(row.error_action)}}</small>` : '';
         return `<tr>
           <td><span class="pill ${{esc(row.status_class)}}">${{esc(row.status_label)}}</span><br><small>${{esc(row.status)}}</small></td>
           <td>${{esc(row.platform)}}<br><small>${{esc(row.content_type)}}</small></td>
@@ -736,7 +739,7 @@ def render_html(
           <td>${{esc(row.account_key || '-')}}<br><small>${{esc(row.profile_name || row.profile_id)}}</small></td>
           <td>${{esc(row.published_at || row.finished_at || row.started_at || '-')}}</td>
           <td>${{screenshot}}</td>
-          <td class="note-cell">${{esc(note || '-')}}</td>
+          <td class="note-cell">${{esc(note || '-')}}${{action}}</td>
         </tr>`;
       }}).join('');
       emptyState.hidden = rows.length !== 0;

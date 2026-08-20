@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import csv
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -11,6 +12,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from rpa_customer_report_page import generate_report_page  # noqa: E402
+from rpa_report_export import export_customer_report  # noqa: E402
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
@@ -58,12 +60,58 @@ def test_published_single() -> None:
     assert_contains(html, "122106554229435838", "single post id")
 
 
+def test_error_action_report() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        summary = root / "publish_summary.csv"
+        detail = root / "customer_report_seed.csv"
+        overview = root / "customer_report_overview.csv"
+        with summary.open("w", encoding="utf-8-sig", newline="") as fh:
+            writer = csv.DictWriter(
+                fh,
+                fieldnames=[
+                    "publish_id",
+                    "client_id",
+                    "product_id",
+                    "platform",
+                    "content_type",
+                    "status",
+                    "account_key",
+                    "error_type",
+                    "error_message",
+                    "finished_at",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "publish_id": "PUB-ERR-001",
+                    "client_id": "DMX",
+                    "product_id": "RPA-ERROR-ACTION",
+                    "platform": "facebook",
+                    "content_type": "image",
+                    "status": "FAILED",
+                    "account_key": "fb_test_sg_001",
+                    "error_type": "PROXY_CONNECTION_FAILED",
+                    "error_message": "proxy failed",
+                    "finished_at": "2026-08-20T10:30:00",
+                }
+            )
+        export_customer_report(summary, detail, overview)
+        detail_text = detail.read_text(encoding="utf-8-sig")
+        assert_contains(detail_text, "CHECK_PROXY", "derived error action in detail CSV")
+        html = run_report(detail, overview)
+        assert_contains(html, "CHECK_PROXY", "derived error action in report page")
+
+
 def main() -> int:
     test_batch_sample()
     print("PASS test_batch_sample")
     test_published_single()
     print("PASS test_published_single")
-    print("Customer report page self-test passed: 2 groups")
+    test_error_action_report()
+    print("PASS test_error_action_report")
+    print("Customer report page self-test passed: 3 groups")
     return 0
 
 

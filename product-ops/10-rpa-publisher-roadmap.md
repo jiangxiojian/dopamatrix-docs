@@ -50,7 +50,7 @@
 | URL 识别回归自测 | 已实现基础版 | 新增 `rpa_url_detection_selftest.py`，离线覆盖 TK/FB URL 解析、Business Suite `content_id` 推导和 FB 内容日历多候选排序。 |
 | 本地一键自测聚合 | 已实现基础版 | 新增 `rpa_selftest.py`，可一条命令串起 URL 回收、客户报告网页和弹窗/异常分类三组离线回归。 |
 | 平台发布器拆分 | 已实现基础版 | 新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和注册表，主流程通过 `get_publisher(platform)` 调度平台逻辑。 |
-| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败。 |
+| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败，并派生 `error_action` 处置建议。 |
 | RPA 发布操作台 V1 | 已实现基础版 | 新增静态 HTML 生成器，可读取计划表、JSONL、汇总 CSV 和截图，展示任务状态、截图、错误、人工备注和回填命令；支持搜索、状态/平台筛选、复制回填和重试命令，没有服务器和数据库依赖。 |
 | RPA 确认工作台 MVP | 已实现基础版 | 新增本地 `127.0.0.1` 工作台服务，可在页面里写回 `PUBLISHED_MANUAL/REJECTED_MANUAL/FAILED/READY`，记录账号健康备注，并导出汇总 CSV。 |
 | Tab 隔离 | 已实机验证 | 默认 `--tab-mode new`，每条任务新开 Tab；关闭窗口后重开、窗口已打开再次执行、TK 单条和 FB 单条草稿准备均确认不会覆盖原 Tab。 |
@@ -77,7 +77,7 @@
 | Facebook 内容类型 | Page 图片帖和视频/Reels 草稿准备都已实机验证；2026-08-19 又单独生成 `PUB-FB-20260819-001-402E5C` 图片帖计划并回写 `PREPARED`。脚本会在 `PREPARED` 前确认媒体处理完成。 | 后续还需要更多 Page、更多账号和更多素材样本。 |
 | Facebook 上传稳定性 | 当前 Page 图片帖多轮 `auto` 测试已通过；2026-08-19 单条图片帖用受控 file chooser 上传成功，FB 视频/Reels 草稿准备也已跑通一次。 | FB 页面不稳定时容易弹系统文件选择器，必须确保脚本不会卡死整组任务。 |
 | TikTok 多样本稳定性 | 已完成 3 条重复视频批量彩排；还需要真实多素材覆盖。 | 需要连续样本证明选择器和弹窗处理可靠。 |
-| 异常分类细化 | 平台级基础错误码已完成；还没有按具体页面截图、弹窗文案和账号状态做更细判定。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
+| 异常分类细化 | 平台级基础错误码和 `error_action` 处置建议已完成；还没有按具体页面截图、弹窗文案和账号状态做更细判定。 | 运营需要知道是重试、换号、人工处理还是废弃任务。 |
 | 平台弹窗库 | 只处理少数安全弹窗。 | 平台 UI 会频繁弹新提示，需要记录和逐步补规则。 |
 
 ## 优先级

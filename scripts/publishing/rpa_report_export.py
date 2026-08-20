@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from bitbrowser_rpa_example import recommend_error_action
+
 
 DEFAULT_SUMMARY = "publish_summary.csv"
 DEFAULT_DETAIL = "customer_report_seed.csv"
@@ -52,6 +54,7 @@ DETAIL_FIELDS = [
     "manual_checked_at",
     "manual_note",
     "error_type",
+    "error_action",
     "error_message",
     "views",
     "impressions",
@@ -170,11 +173,12 @@ def build_detail_rows(summary_rows: list[dict[str, str]], snapshot_at: str) -> l
         published = is_published(row)
         post_url = row.get("post_url", "")
         group = status_group(row.get("status", ""))
+        error_action = row.get("error_action", "") or recommend_error_action(row.get("error_type", ""), row.get("status", ""))
         report_note = ""
         if published and not post_url:
             report_note = "已标记发布，但缺少公开帖子链接，需要人工补齐。"
         elif group == "NEEDS_OPERATOR":
-            report_note = "发布准备失败或部分成功，需要运营判断重试、换号或人工处理。"
+            report_note = f"发布准备失败或部分成功，建议处置：{error_action or 'HUMAN_REVIEW'}。"
         elif group == "DRAFT_PREPARED":
             report_note = "草稿已准备，等待人工检查并点击发布。"
 
@@ -211,6 +215,7 @@ def build_detail_rows(summary_rows: list[dict[str, str]], snapshot_at: str) -> l
                 "manual_checked_at": row.get("manual_checked_at", ""),
                 "manual_note": row.get("manual_note", ""),
                 "error_type": row.get("error_type", ""),
+                "error_action": error_action,
                 "error_message": row.get("error_message", ""),
                 "data_source": "rpa_publish_summary",
                 "report_note": report_note,
