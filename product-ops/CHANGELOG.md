@@ -21,6 +21,7 @@
 - 发布后 URL 识别未命中时新增 `POST_URL_NOT_FOUND` 事件记录，并写入 `RETRY_OR_MANUAL_CHECK` 处置建议；检测命令和确认工作台现在未命中也会追加 JSONL，便于后续复盘。
 - 客户报告网页 V1 新增“待回收链接”概览指标，突出已发布但缺少公开帖子 URL 的任务。
 - RPA 处置建议新增 `error_action_label` 中文说明，操作台、确认工作台和客户报告页会优先显示可读标签，同时保留稳定机器码。
+- RPA 静态操作台和确认工作台新增“处理建议”筛选，方便运营集中查看需要检查代理、人工检查账号或重试的任务。
 - URL 识别自测补充 TikTok photo/player 和 Facebook reels/story/photo/watch 样本，覆盖更多常见发布后链接变体。
 - TikTok 发布后 URL 识别补充 Studio / Creator Center 查询参数场景：脚本现在能从 `item_id`、`video_id`、`aweme_id` 等参数提取 post id，并在缺少用户名时回退到 `player/v1/<post_id>` 可定位链接。
 - 真实 TikTok Studio / Creator Center 发布后页面样本仍待补充，用于确认查询参数回收规则在实机环境下稳定生效。

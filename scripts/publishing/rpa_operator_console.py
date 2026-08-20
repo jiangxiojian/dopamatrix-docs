@@ -361,7 +361,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
         ).lower()
         cards.append(
             f"""
-            <article class="task" data-status="{escape(status.upper())}" data-platform="{escape(row.get('platform', '').lower())}" data-search="{escape(search_text)}">
+            <article class="task" data-status="{escape(status.upper())}" data-platform="{escape(row.get('platform', '').lower())}" data-action="{escape((row.get('error_action') or 'NONE').upper())}" data-search="{escape(search_text)}">
               <div class="shot">{screenshot}</div>
               <div class="task-main">
                 <div class="task-head">
@@ -423,6 +423,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
 def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_info: dict[str, str]) -> str:
     counts = Counter((row.get("status") or "UNKNOWN").upper() for row in rows)
     platforms = Counter((row.get("platform") or "unknown").lower() for row in rows)
+    actions = Counter((row.get("error_action") or "NONE").upper() for row in rows)
     avg_duration_values = [
         float(row["duration_seconds"])
         for row in rows
@@ -440,6 +441,10 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
     platform_buttons = "".join(
         f'<button data-filter-platform="{escape(platform)}">{escape(platform)} ({platforms[platform]})</button>'
         for platform in sorted(platforms)
+    )
+    action_buttons = "".join(
+        f'<button data-filter-action="{escape(action)}">{escape(action)} ({actions[action]})</button>'
+        for action in sorted(actions)
     )
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -529,23 +534,30 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
       <button class="active" data-filter-platform="ALL">全部平台 ({len(rows)})</button>
       {platform_buttons}
     </div>
+    <div class="filter-row">
+      <button class="active" data-filter-action="ALL">全部建议 ({len(rows)})</button>
+      {action_buttons}
+    </div>
   </nav>
   <main>{body_rows}</main>
   <script>
     const statusButtons = document.querySelectorAll('button[data-filter-status]');
     const platformButtons = document.querySelectorAll('button[data-filter-platform]');
+    const actionButtons = document.querySelectorAll('button[data-filter-action]');
     const tasks = document.querySelectorAll('.task');
     const search = document.querySelector('#search');
     let activeStatus = 'ALL';
     let activePlatform = 'ALL';
+    let activeAction = 'ALL';
 
     function applyFilters() {{
       const term = (search.value || '').trim().toLowerCase();
       tasks.forEach((task) => {{
         const statusMatch = activeStatus === 'ALL' || task.dataset.status === activeStatus;
         const platformMatch = activePlatform === 'ALL' || task.dataset.platform === activePlatform;
+        const actionMatch = activeAction === 'ALL' || task.dataset.action === activeAction;
         const searchMatch = !term || (task.dataset.search || '').includes(term);
-        task.style.display = statusMatch && platformMatch && searchMatch ? '' : 'none';
+        task.style.display = statusMatch && platformMatch && actionMatch && searchMatch ? '' : 'none';
       }});
     }}
 
@@ -565,6 +577,13 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
       button.addEventListener('click', () => {{
         activate(platformButtons, button);
         activePlatform = button.dataset.filterPlatform;
+        applyFilters();
+      }});
+    }});
+    actionButtons.forEach((button) => {{
+      button.addEventListener('click', () => {{
+        activate(actionButtons, button);
+        activeAction = button.dataset.filterAction;
         applyFilters();
       }});
     }});

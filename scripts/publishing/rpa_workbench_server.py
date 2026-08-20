@@ -556,6 +556,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     <input type="search" id="search" placeholder="搜索 publish_id / 账号 / 客户 / 产品 / 素材 / 错误">
     <select id="statusFilter"><option value="ALL">全部状态</option></select>
     <select id="platformFilter"><option value="ALL">全部平台</option></select>
+    <select id="actionFilter"><option value="ALL">全部建议</option></select>
     <button id="reload" class="soft">刷新</button>
     <button id="exportSummary" class="soft">导出汇总 CSV</button>
     <button id="exportReport" class="soft">导出客户报告种子</button>
@@ -570,6 +571,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     const searchEl = document.querySelector('#search');
     const statusFilter = document.querySelector('#statusFilter');
     const platformFilter = document.querySelector('#platformFilter');
+    const actionFilter = document.querySelector('#actionFilter');
 
     function esc(value) {{
       return String(value || '').replace(/[&<>"']/g, (ch) => ({{
@@ -631,6 +633,11 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       `;
       fillSelect(statusFilter, Object.keys(state.counts).sort(), '状态');
       fillSelect(platformFilter, Object.keys(state.platforms).sort(), '平台');
+      fillSelect(
+        actionFilter,
+        [...new Set(state.tasks.map((task) => String(task.error_action || 'NONE').toUpperCase()))].sort(),
+        '建议'
+      );
     }}
 
     function taskSearchText(task) {{
@@ -646,11 +653,13 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       const term = searchEl.value.trim().toLowerCase();
       const status = statusFilter.value;
       const platform = platformFilter.value;
+      const action = actionFilter.value;
       return state.tasks.filter((task) => {{
         const statusOk = status === 'ALL' || String(task.status || 'UNKNOWN').toUpperCase() === status;
         const platformOk = platform === 'ALL' || String(task.platform || 'unknown').toLowerCase() === platform;
+        const actionOk = action === 'ALL' || String(task.error_action || 'NONE').toUpperCase() === action;
         const searchOk = !term || taskSearchText(task).includes(term);
-        return statusOk && platformOk && searchOk;
+        return statusOk && platformOk && actionOk && searchOk;
       }});
     }}
 
@@ -885,6 +894,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     searchEl.addEventListener('input', renderTasks);
     statusFilter.addEventListener('change', renderTasks);
     platformFilter.addEventListener('change', renderTasks);
+    actionFilter.addEventListener('change', renderTasks);
     load().catch((error) => toast(error.message, true));
   </script>
 </body>

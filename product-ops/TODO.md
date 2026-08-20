@@ -42,7 +42,7 @@
 | P1 | 自动采集发布后帖子链接和发布时间 | 完成基础版 | 已接入 `--detect-post-url` 和工作台识别按钮；2026-08-19 已补 FB 内容日历多候选时按最近发布时间优先，避免误选旧帖。 |
 | P1 | URL 识别回归自测 | 完成基础版 | `rpa_url_detection_selftest.py` 覆盖 TK/FB post id 解析、Business Suite `content_id` 和 FB 内容日历候选排序。 |
 | P1 | RPA 发布操作台 V1 | 完成基础版 | 静态 HTML 读取计划表、JSONL、汇总 CSV 和截图，展示任务状态，并支持生成/复制人工回填命令。 |
-| P1 | RPA 操作台静态增强 | 完成基础版 | 支持搜索、状态/平台筛选、复制回填命令、复制失败/部分成功重试命令，并自动带上 JSONL 日志路径。 |
+| P1 | RPA 操作台静态增强 | 完成基础版 | 支持搜索、状态/平台/处理建议筛选、复制回填命令、复制失败/部分成功重试命令，并自动带上 JSONL 日志路径。 |
 | P2 | RPA 操作台增强为确认工作台 | 完成 MVP | 本地工作台可在页面写回状态、记录账号健康备注、选择失败重试为 READY，并导出汇总 CSV。 |
 | P1 | 补 Facebook Page 视频/Reels 测试 | 完成基础版 | 2026-08-17 已实机验证 1 条真实视频/Reels 草稿准备；脚本会等到媒体处理确认后再写回 `PREPARED`，且不会点击最终发布。 |
 | P1 | 拆分平台发布器并细化异常分类 | 完成基础版 | 已新增 `TikTokPublisher` / `FacebookPublisher` 注册表，并补平台级上传、caption、FB Page 权限和 file chooser 超时分类。 |
