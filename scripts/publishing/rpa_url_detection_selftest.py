@@ -48,6 +48,19 @@ def test_tiktok_post_ids() -> None:
         "https://www.tiktok.com/@xiojian9527/video/7675641440810093844",
         "TikTok Studio public fallback URL",
     )
+    assert_equal(
+        extract_platform_post_id("https://www.tiktok.com/@xiojian9527/photo/7675641440810093844", "tiktok"),
+        "7675641440810093844",
+        "TikTok public photo URL",
+    )
+    assert_equal(
+        normalize_post_url(
+            "https://www.tiktok.com/player/v1/7675641440810093844?share=1&foo=bar",
+            "tiktok",
+        ),
+        "https://www.tiktok.com/player/v1/7675641440810093844",
+        "TikTok player fallback URL",
+    )
 
 
 def test_facebook_post_ids() -> None:
@@ -78,6 +91,43 @@ def test_facebook_post_ids() -> None:
         ),
         "https://www.facebook.com/1237975296070200/posts/122106554229435838",
         "Facebook Business Suite fallback page id",
+    )
+    assert_equal(
+        extract_platform_post_id("https://www.facebook.com/reel/122106554229435838", "facebook"),
+        "122106554229435838",
+        "Facebook reels URL",
+    )
+    assert_equal(
+        extract_platform_post_id(
+            "https://www.facebook.com/story.php?story_fbid=122106554229435838&id=1237975296070200",
+            "facebook",
+        ),
+        "122106554229435838",
+        "Facebook story.php URL",
+    )
+    assert_equal(
+        normalize_post_url(
+            "https://www.facebook.com/story.php?story_fbid=122106554229435838&id=1237975296070200&ref=sharing",
+            "facebook",
+        ),
+        "https://www.facebook.com/permalink.php?story_fbid=122106554229435838&id=1237975296070200",
+        "Facebook story.php canonical permalink",
+    )
+    assert_equal(
+        normalize_post_url(
+            "https://www.facebook.com/photo.php?fbid=122106554229435838&id=1237975296070200&set=a.1",
+            "facebook",
+        ),
+        "https://www.facebook.com/photo.php?fbid=122106554229435838&id=1237975296070200",
+        "Facebook photo.php canonical URL",
+    )
+    assert_equal(
+        normalize_post_url(
+            "https://www.facebook.com/watch?v=122106554229435838&ref=sharing",
+            "facebook",
+        ),
+        "https://www.facebook.com/watch?v=122106554229435838",
+        "Facebook watch URL",
     )
 
 
