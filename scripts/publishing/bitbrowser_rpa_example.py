@@ -2180,6 +2180,7 @@ def wait_for_facebook_media_processing(
 def dismiss_safe_popups(page) -> list[str]:
     clicked: list[str] = []
     selectors = [
+        "button:has-text('Cancel')",
         "button:has-text('Got it')",
         "button:has-text('Not now')",
         "button:has-text('Maybe later')",
@@ -2461,7 +2462,7 @@ def classify_error(error_type: str, error_message: str, platform: str = "") -> s
         return "BROWSER_TARGET_CLOSED"
     if "too many requests" in haystack or "rate limit" in haystack or "temporarily blocked" in haystack:
         return "PLATFORM_RATE_LIMIT_OR_RESTRICTION"
-    if platform_key == "facebook" and "file chooser" in haystack and "timeout" in haystack:
+    if platform_key == "facebook" and "file chooser" in haystack and ("timeout" in haystack or "timed out" in haystack):
         return "FACEBOOK_FILE_CHOOSER_TIMEOUT"
     if platform_key == "facebook" and "page" in haystack and (
         "permission" in haystack

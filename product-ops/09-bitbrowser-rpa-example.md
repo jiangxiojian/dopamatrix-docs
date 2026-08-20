@@ -451,7 +451,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有自动点击最终发布按钮。
 - 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
 - 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析和 FB 内容日历多候选排序。
-- 已新增 `rpa_selftest.py`，一条命令跑完 URL 回收和客户报告页的本地回归。
+- 已新增 `rpa_selftest.py`，一条命令跑完 URL 回收、客户报告页和弹窗/异常分类的本地回归。
 
 生产化时需要补：
 
@@ -466,7 +466,7 @@ post_url 自动识别
 客户报告网页 V1 实机样本微调
 ```
 
-发布后 URL 识别、客户报告页或汇总口径改动后，先跑本地自测：
+发布后 URL 识别、客户报告页、弹窗库或异常分类改动后，先跑本地自测：
 
 ```powershell
 python docs/scripts/publishing/rpa_selftest.py
