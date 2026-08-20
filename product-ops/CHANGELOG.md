@@ -10,6 +10,9 @@
 
 - 新增 `scripts/publishing/rpa_report_export.py`，可把 `publish_summary.csv` 进一步导出为客户报告种子文件：`customer_report_seed.csv` 和 `customer_report_overview.csv`。
 - `rpa_workbench_server.py` 新增“导出客户报告种子”按钮和对应接口，可在确认工作台里先刷新汇总，再一键生成报告明细和总览。
+- 新增 `scripts/publishing/rpa_customer_report_page.py`，可从客户报告种子 CSV 生成本地静态 HTML，展示发布概览、内容明细、帖子链接、状态分布和待补指标。
+- `rpa_workbench_server.py` 新增“生成客户报告网页”按钮和接口，可一键刷新汇总、导出报告种子并生成 `customer_report.html`。
+- 新增 `scripts/publishing/rpa_url_detection_selftest.py`，用于离线回归检查 TK/FB post id 解析、Business Suite `content_id` 推导和 FB 内容日历多候选排序。
 - TikTok 发布后 URL 识别补充 Studio / Creator Center 查询参数场景：脚本现在能从 `item_id`、`video_id`、`aweme_id` 等参数提取 post id，并在缺少用户名时回退到 `player/v1/<post_id>` 可定位链接。
 - 真实 TikTok Studio / Creator Center 发布后页面样本仍待补充，用于确认查询参数回收规则在实机环境下稳定生效。
 
@@ -17,6 +20,9 @@
 
 - 2026-08-19 实机发布并回收 TikTok 公开视频：`PUB-TK-TEST-001` 从 `tiktokstudio/content` 页面识别并回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`，随后页面状态变为 `Public`。
 - 2026-08-19 实机发布并回收 Facebook Page 视频/Reels：`PUB-FB-20260814-002-63893D` 从 Business Suite 内容日历识别并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838`。
+- 2026-08-19 生成单条 Facebook 图片帖计划 `PUB-FB-20260819-001-402E5C`，读取同窗口账号 `fb_test_sg_001`，新开任务 Tab 上传图片、填入文案和短链，46.84 秒完成并回写 `PREPARED`；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-FB-20260819-001-402E5C-facebook-20260819-160426.png`。
+- 人工发布 `PUB-FB-20260819-001-402E5C` 后，脚本从 Facebook Business Suite 内容日历按最近发布时间候选回收并回填正确公开帖子：`https://www.facebook.com/1237975296070200/posts/122106554229435838`。
+- URL 识别自测已通过 3 组规则：TikTok 公开视频/Studio 查询参数、Facebook 公开帖/Business Suite `content_id`、FB 内容日历最近发布时间候选排序。
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 跑 `--detect-post-url` 真机扫描，当前只看到 `console.bitbrowser.net`、Facebook composer 和 TikTok upload 三个页签，未识别到公开帖子 URL；脚本能干净返回 `POST_URL_NOT_FOUND`。
 - 启动本地确认工作台并调用 `/api/tasks`、`/api/detect-post-url`，验证工作台能读取计划表和账号台账，也能通过接口扫描同一 BitBrowser 窗口并返回 `POST_URL_NOT_FOUND`。
 - 人工点击 Facebook Page 发布后，Business Suite 跳到内容日历；脚本从 `object_insights?content_id=122106457737435838` 推导并回填公开帖子 URL：`https://www.facebook.com/1237975296070200/posts/122106457737435838`。
@@ -25,6 +31,8 @@
 
 - 发布后 URL 识别补充 Facebook Business Suite 内容日历场景：当页面只有 `business.facebook.com/latest/insights/object_insights/?content_id=...` 链接时，脚本会结合当前页 `asset_id` 推导 `facebook.com/<page_id>/posts/<content_id>`。
 - Facebook 识别规则过滤 `business.facebook.com/latest/posts/...` 这类 Business Suite 导航 URL，避免把 `published_posts`、`ab_testing` 等栏目路径误判为平台 post id。
+- Facebook Business Suite 内容日历可能同时暴露多条历史帖子候选；候选排序新增发布时间文本优先级，优先选择最接近当前检查时间且不晚于当前时间的候选，避免误回填旧帖。
+- RPA 专项范围收敛为两个重点：客户报告网页 V1，以及发布后 URL 回收、异常分类、弹窗库稳定性；询盘中心、AI 客服、客户权限系统和爆款基因明确标为非本专项。
 
 ## 2026-08-18
 

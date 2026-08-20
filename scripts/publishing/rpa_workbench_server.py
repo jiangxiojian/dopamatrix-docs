@@ -46,6 +46,10 @@ from rpa_report_export import (  # noqa: E402
     DEFAULT_OVERVIEW as DEFAULT_CUSTOMER_REPORT_OVERVIEW,
     export_customer_report as write_customer_report_seed,
 )
+from rpa_customer_report_page import (  # noqa: E402
+    DEFAULT_OUTPUT as DEFAULT_CUSTOMER_REPORT_HTML,
+    generate_report_page,
+)
 from rpa_operator_console import (  # noqa: E402
     latest_jsonl_rows,
     merge_rows,
@@ -92,6 +96,7 @@ class WorkbenchConfig:
     summary_csv: Path
     customer_report_detail_csv: Path
     customer_report_overview_csv: Path
+    customer_report_html: Path
     account_health_csv: Path
     account_ledger_csv: Path
     bit_api: str
@@ -148,6 +153,7 @@ class WorkbenchState:
             config.summary_csv.parent.resolve(),
             config.customer_report_detail_csv.parent.resolve(),
             config.customer_report_overview_csv.parent.resolve(),
+            config.customer_report_html.parent.resolve(),
             config.account_health_csv.parent.resolve(),
             config.account_ledger_csv.parent.resolve(),
         ]
@@ -182,6 +188,7 @@ class WorkbenchState:
                 "summary_csv": str(self.config.summary_csv),
                 "customer_report_detail_csv": str(self.config.customer_report_detail_csv),
                 "customer_report_overview_csv": str(self.config.customer_report_overview_csv),
+                "customer_report_html": str(self.config.customer_report_html),
                 "account_health_csv": str(self.config.account_health_csv),
                 "account_ledger_csv": str(self.config.account_ledger_csv),
                 "bit_api": self.config.bit_api,
@@ -376,6 +383,21 @@ class WorkbenchState:
         result["summary_rows"] = len(summary_rows)
         return result
 
+    def export_customer_report_page(self) -> dict[str, Any]:
+        seed_result = self.export_customer_report()
+        args = argparse.Namespace(
+            detail_csv=str(self.config.customer_report_detail_csv),
+            overview_csv=str(self.config.customer_report_overview_csv),
+            output_html=str(self.config.customer_report_html),
+            client_id="",
+        )
+        output = generate_report_page(args)
+        return {
+            **seed_result,
+            "customer_report_html": str(output),
+            "customer_report_url": self.artifact_url(str(output)),
+        }
+
     def resolve_artifact(self, path_text: str) -> Path:
         if not path_text:
             raise WorkbenchError("path is required.")
@@ -523,6 +545,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     <button id="reload" class="soft">刷新</button>
     <button id="exportSummary" class="soft">导出汇总 CSV</button>
     <button id="exportReport" class="soft">导出客户报告种子</button>
+    <button id="exportReportPage" class="soft">生成客户报告网页</button>
   </nav>
   <main id="tasks"></main>
   <div class="toast" id="toast"></div>
@@ -580,6 +603,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         <span>汇总：${{esc(sources.summary_csv)}}</span>
         <span>报告明细：${{esc(sources.customer_report_detail_csv)}}</span>
         <span>报告总览：${{esc(sources.customer_report_overview_csv)}}</span>
+        <span>报告网页：${{esc(sources.customer_report_html)}}</span>
         <span>账号健康：${{esc(sources.account_health_csv)}}</span>
         <span>账号台账：${{esc(sources.account_ledger_csv)}}</span>
         <span>比特 API：${{esc(sources.bit_api)}}</span>
@@ -830,6 +854,16 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         toast(error.message || String(error), true);
       }}
     }});
+    document.querySelector('#exportReportPage').addEventListener('click', async () => {{
+      try {{
+        const result = await api('/api/export-customer-report-page', {{ method: 'POST', body: JSON.stringify({{}}) }});
+        toast(`已生成客户报告网页：${{result.customer_report_html || ''}}`);
+        if (result.customer_report_url) window.open(result.customer_report_url, '_blank');
+        await load();
+      }} catch (error) {{
+        toast(error.message || String(error), true);
+      }}
+    }});
     searchEl.addEventListener('input', renderTasks);
     statusFilter.addEventListener('change', renderTasks);
     platformFilter.addEventListener('change', renderTasks);
@@ -889,6 +923,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/export-customer-report":
                 json_response(self, self.state.export_customer_report())
                 return
+            if parsed.path == "/api/export-customer-report-page":
+                json_response(self, self.state.export_customer_report_page())
+                return
             json_response(self, {"error": "not found"}, status=404)
         except Exception as exc:
             json_response(self, {"error": str(exc)}, status=400)
@@ -901,6 +938,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--summary-csv", help="publish_summary.csv path")
     parser.add_argument("--customer-report-detail-csv", help="Customer report detail seed CSV path")
     parser.add_argument("--customer-report-overview-csv", help="Customer report overview CSV path")
+    parser.add_argument("--customer-report-html", help="Customer report HTML path")
     parser.add_argument("--account-health-csv", help="Account health CSV path")
     parser.add_argument("--account-ledger", help="Account ledger CSV path")
     parser.add_argument("--bit-api", default=DEFAULT_BIT_API, help=f"BitBrowser local API URL. Default: {DEFAULT_BIT_API}")
@@ -927,6 +965,11 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
         if args.customer_report_overview_csv
         else summary_csv.parent / DEFAULT_CUSTOMER_REPORT_OVERVIEW
     )
+    customer_report_html = (
+        Path(args.customer_report_html).expanduser().resolve()
+        if args.customer_report_html
+        else customer_report_detail_csv.parent / DEFAULT_CUSTOMER_REPORT_HTML
+    )
     account_health_csv = (
         Path(args.account_health_csv).expanduser().resolve()
         if args.account_health_csv
@@ -943,6 +986,7 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
         summary_csv=summary_csv,
         customer_report_detail_csv=customer_report_detail_csv,
         customer_report_overview_csv=customer_report_overview_csv,
+        customer_report_html=customer_report_html,
         account_health_csv=account_health_csv,
         account_ledger_csv=account_ledger_csv,
         bit_api=args.bit_api,

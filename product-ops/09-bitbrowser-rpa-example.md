@@ -442,7 +442,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有生成 `publish_id`。
 - 已支持写入单次 JSON 日志，但还没有接入产品数据库。
 - 已支持读取 `publish_plan.csv` 的 READY 行、追加 `publish_logs.jsonl`、显式回写计划表状态、人工回填帖子链接和 post id、导出 `publish_summary.csv`，生成本地 RPA 发布操作台 HTML，以及启动本地确认工作台直接写回人工结果。
-- 已支持把 `publish_summary.csv` 再导出为客户报告种子文件 `customer_report_seed.csv` 和 `customer_report_overview.csv`，方便后续客户报告网页和周报/月报接入。
+- 已支持把 `publish_summary.csv` 再导出为客户报告种子文件 `customer_report_seed.csv` 和 `customer_report_overview.csv`，并用 `rpa_customer_report_page.py` 生成本地客户报告 HTML。
 - 已支持批量计划模式单任务硬超时隔离；`--task-timeout-seconds` 大于 0 时，每条任务都会走独立子进程，超时会被强制终止并继续下一条。
 - 默认每条任务新开 Tab，避免 TK/FB 同窗口顺序执行时后一条任务覆盖前一条草稿。
 - 已把 TikTok / Facebook 的平台入口拆成 `TikTokPublisher` / `FacebookPublisher` 注册表，后续增加 FB Reels、快拍或其他平台时不再继续堆主流程分支。
@@ -450,6 +450,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有自动确认 Page 是否正确。
 - 没有自动点击最终发布按钮。
 - 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
+- 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析和 FB 内容日历多候选排序。
 
 生产化时需要补：
 
@@ -461,7 +462,13 @@ account_registry 查询
 平台弹窗识别
 post_url 自动识别
 平台 post id 自动识别
-客户报告网页接入
+客户报告网页 V1 实机样本微调
+```
+
+发布后 URL 识别规则改动后，先跑离线自测：
+
+```powershell
+python docs/scripts/publishing/rpa_url_detection_selftest.py
 ```
 
 ## 需要实机验证的问题
@@ -479,6 +486,8 @@ post_url 自动识别
 | TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条、FB 单条、以及 2026-08-14 3 条 TK + 3 条 FB 同窗口顺序彩排均在独立任务 Tab 完成草稿准备，未点击最终发布 |
 | 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png` |
 | 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png` |
+| Facebook 图片帖单条计划草稿准备 | 已验证：2026-08-19 使用 `fb-image-post-plan-test.csv` 生成并执行 `PUB-FB-20260819-001-402E5C`，脚本新开任务 Tab，上传图片、填文案和短链，46.84 秒完成并回写 `PREPARED`；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-FB-20260819-001-402E5C-facebook-20260819-160426.png` |
+| Facebook 图片帖发布后 URL 回收 | 已验证：人工发布 `PUB-FB-20260819-001-402E5C` 后，内容日历出现多条历史候选；脚本按最近发布时间优先选中 `16:08` 新帖，并回填 `https://www.facebook.com/1237975296070200/posts/122106554229435838` |
 | Facebook 文件选择器弹出风险 | 已确认：系统原生文件管理器会导致脚本等待超时；已移除裸点 fallback，后续只允许页面 input 或受控 file chooser |
 | Facebook `auto` 多轮稳定性 | 已验证：窗口已打开连续 3 次、`file-chooser` 直连 3 次、冷启动 1 次、完全不传上传参数 1 次均完成上传和文案填充 |
 | `--plan-repeat` 重复任务彩排 | 已验证：同一个视频生成 3 条 TK、同一张图片生成 3 条 FB；代理开启后 6 条均回写 `PREPARED`，汇总 CSV 行数为 6 |
@@ -489,16 +498,15 @@ post_url 自动识别
 | Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；TikTok 现在也能从 Studio / Creator Center 查询参数里的 `item_id`、`video_id`、`aweme_id` 等字段提取 post id，2026-08-19 已用真实 `tiktokstudio/content` 页面回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`；同日 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
+| URL 识别回归自测 | 已验证：`rpa_url_detection_selftest.py` 覆盖 TK 公开视频/Studio 查询参数、FB 公开帖/Business Suite `content_id`、FB 内容日历多候选排序 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 | TikTok Studio / Creator Center 真实页面是否能稳定从查询参数回收 post id | 已验证 | 2026-08-19 使用真实 `tiktokstudio/content` 页面中的 `item_id`/`video_id` 结果回收 post id，并成功回填公开视频链接 |
 
 ## 下一步
 
-1. 用真实多素材再跑一轮 6-10 条彩排，验证不是同素材缓存带来的偶然稳定。
-2. 打开真实 Facebook Page 视频/Reels 入口，复制 URL 到 `composer_url` 后跑 1 条上传测试，仍停在发布前。
-3. 先把客户报告网页接上 `customer_report_seed.csv` / `customer_report_overview.csv` 的字段口径，再继续补周报/月报导出。
-4. 继续细化异常分类，按 TK/FB 页面弹窗、账号验证、Page 选择错误和素材格式补规则。
-5. 继续用更多真实 FB Page 和 TK 帖子样本验证 `--detect-post-url`，特别是 Reels、快拍、公开视频页和不同语言界面。
+1. 继续补发布回收和稳定性：TK/FB 发布后 URL 回收样本、异常分类、弹窗库，以及 FB 内容日历多候选排序的自动化测试。
+2. 用真实多素材跑 6-10 条彩排，验证报告页、发布回收和异常分类能稳定承接。
+3. 按真实客户样本微调客户报告网页 V1 的字段、筛选和导出命名。
 
 ## 外部资料
 

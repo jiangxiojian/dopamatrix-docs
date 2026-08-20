@@ -720,6 +720,53 @@ def _post_candidate_score(source: str, tab_url: str) -> int:
     return score
 
 
+def _facebook_candidate_time_delta_seconds(text: str, checked_at: datetime) -> int | None:
+    match = re.search(r"(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?!\d)", text or "")
+    if not match:
+        return None
+    candidate_at = checked_at.replace(
+        hour=int(match.group(1)),
+        minute=int(match.group(2)),
+        second=0,
+        microsecond=0,
+    )
+    if candidate_at > checked_at + timedelta(minutes=5):
+        candidate_at -= timedelta(days=1)
+    delta_seconds = int((checked_at - candidate_at).total_seconds())
+    if delta_seconds < -300:
+        return None
+    return max(0, delta_seconds)
+
+
+def _post_candidate_sort_key(
+    item: dict[str, Any],
+    platform: str,
+    checked_at: datetime | None = None,
+) -> tuple[Any, ...]:
+    score = -int(item.get("score", 0))
+    if platform == "facebook" and checked_at is not None:
+        delta_seconds = item.get("time_delta_seconds")
+        if delta_seconds in (None, ""):
+            delta_seconds = _facebook_candidate_time_delta_seconds(
+                str(item.get("text", "")),
+                checked_at,
+            )
+        missing_time = 1 if delta_seconds is None else 0
+        delta_value = int(delta_seconds) if delta_seconds is not None else 10**9
+        return (
+            score,
+            missing_time,
+            delta_value,
+            int(item.get("tab_index", 0)),
+            item.get("post_url", ""),
+        )
+    return (
+        score,
+        int(item.get("tab_index", 0)),
+        item.get("post_url", ""),
+    )
+
+
 def _candidate_url_parts(url: str) -> tuple[str, str, str, str]:
     cleaned = str(url or "").strip()
     if not cleaned:
@@ -999,6 +1046,8 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
 
 def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
     checked_at = datetime.now().isoformat(timespec="seconds")
+    checked_at_dt = datetime.fromisoformat(checked_at)
+    platform_key = normalize_platform_name(platform)
     scanned_tabs = snapshot_tabs(context)
     candidates: list[dict[str, Any]] = []
     for tab_index, page in enumerate(context.pages, start=1):
@@ -1016,14 +1065,20 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
             )
 
     viable = [item for item in candidates if item.get("post_url") and item.get("platform_post_id")]
-    viable.sort(
-        key=lambda item: (-int(item.get("score", 0)), int(item.get("tab_index", 0)), item.get("post_url", "")),
-    )
+    if platform_key == "facebook":
+        for item in viable:
+            delta_seconds = _facebook_candidate_time_delta_seconds(
+                str(item.get("text", "")),
+                checked_at_dt,
+            )
+            if delta_seconds is not None:
+                item["time_delta_seconds"] = delta_seconds
+    viable.sort(key=lambda item: _post_candidate_sort_key(item, platform_key, checked_at_dt))
     best = viable[0] if viable else _empty_post_candidate()
     best_result = {
         "detected": bool(viable),
         "checked_at": checked_at,
-        "platform": normalize_platform_name(platform),
+        "platform": platform_key,
         "post_url": best.get("post_url", ""),
         "platform_post_id": best.get("platform_post_id", ""),
         "published_at": checked_at if viable else "",
