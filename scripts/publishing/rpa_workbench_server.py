@@ -317,6 +317,12 @@ class WorkbenchState:
             result = detect_post_url_in_context(context, platform)
             result["detection_status"] = "POST_URL_DETECTED" if result.get("detected") else "POST_URL_NOT_FOUND"
             result["status"] = task.get("status", "") or "PREPARED"
+            if result.get("detected"):
+                result["error_action"] = recommend_error_action("", "PUBLISHED_MANUAL")
+            else:
+                result["error_type"] = "POST_URL_NOT_FOUND"
+                result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
+                result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
             payload = {
                 "plan": {
                     "publish_id": publish_id,
@@ -339,8 +345,7 @@ class WorkbenchState:
                 },
                 "result": result,
             }
-            if result.get("detected"):
-                append_jsonl_log(self.config.log_jsonl, payload)
+            append_jsonl_log(self.config.log_jsonl, payload)
             return {
                 "task": task,
                 "profile_id": profile_id,
