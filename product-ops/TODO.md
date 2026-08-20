@@ -20,7 +20,7 @@
 
 | 优先级 | 重点 | 状态 | 验收口径 |
 | --- | --- | --- | --- |
-| P0 | 客户报告网页 V1 | 完成基础版 | `rpa_customer_report_page.py` 可从 `customer_report_seed.csv` / `customer_report_overview.csv` 生成本地 HTML，覆盖发布量、成功率、帖子链接、内容明细、待补指标。 |
+| P0 | 客户报告网页 V1 | 完成基础版 | `rpa_customer_report_page.py` 可从 `customer_report_seed.csv` / `customer_report_overview.csv` 生成本地 HTML，覆盖发布量、成功率、帖子链接、待回收链接、内容明细、待补指标。 |
 | P1 | 客户报告网页自测 | 完成基础版 | `rpa_customer_report_page_selftest.py` 可离线检查批量样本页、单条已发布页和概览区。 |
 | P1 | 本地一键自测聚合 | 完成基础版 | `rpa_selftest.py` 可一条命令跑完 URL 回收、客户报告网页和弹窗/异常分类三组离线回归。 |
 | P0 | 发布回收和稳定性 | 进行中 | 继续补 TK/FB 发布后 URL 回收样本、异常分类和弹窗库，降低误回填、卡死、误判和人工排查成本。 |

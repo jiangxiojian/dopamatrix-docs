@@ -48,6 +48,7 @@ def test_batch_sample() -> None:
     assert_contains(html, "RPA-BATCH-SAMPLE", "batch product key")
     assert_contains(html, "DMX", "batch client key")
     assert_contains(html, "待补指标", "batch pending metrics")
+    assert_contains(html, "待回收链接", "batch missing post URL metric")
 
 
 def test_published_single() -> None:

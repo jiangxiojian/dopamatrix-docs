@@ -218,6 +218,9 @@ def build_summary(detail_rows: list[dict[str, str]], overview_rows: list[dict[st
     attention = sum(1 for row in detail_rows if row.get("status_class") == "attention")
     rejected = sum(1 for row in detail_rows if row.get("status_class") == "muted")
     post_url_count = sum(1 for row in detail_rows if row.get("post_url"))
+    missing_post_url = sum(
+        1 for row in detail_rows if row.get("status_class") == "published" and not row.get("post_url")
+    )
     metrics_pending = sum(1 for row in detail_rows if row.get("metrics_status") == "PENDING_METRICS")
     lead_pending = sum(1 for row in detail_rows if row.get("lead_status") == "PENDING_LEADS")
     platforms = sorted({row.get("platform", "") for row in detail_rows if row.get("platform", "")})
@@ -233,6 +236,7 @@ def build_summary(detail_rows: list[dict[str, str]], overview_rows: list[dict[st
         "attention_count": attention,
         "rejected_count": rejected,
         "post_url_count": post_url_count,
+        "missing_post_url_count": missing_post_url,
         "metrics_pending_count": metrics_pending,
         "lead_pending_count": lead_pending,
         "publish_success_rate": pct(published, total),
@@ -342,7 +346,7 @@ def render_html(
     main {{ padding: 18px 0 28px; }}
     .metrics {{
       display: grid;
-      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
       gap: 10px;
       margin-bottom: 12px;
     }}
@@ -551,6 +555,7 @@ def render_html(
       <div class="metric"><label>发布任务</label><strong id="metric-total">0</strong><small>当前筛选内任务数</small></div>
       <div class="metric"><label>已发布</label><strong id="metric-published">0</strong><small id="metric-rate">成功率 0.00%</small></div>
       <div class="metric"><label>帖子链接</label><strong id="metric-post-url">0</strong><small>已回收公开链接</small></div>
+      <div class="metric"><label>待回收链接</label><strong id="metric-missing-post-url">0</strong><small>已发布但缺链接</small></div>
       <div class="metric"><label>待人工发布</label><strong id="metric-prepared">0</strong><small>草稿已准备</small></div>
       <div class="metric"><label>需处理</label><strong id="metric-attention">0</strong><small>失败或部分成功</small></div>
       <div class="metric"><label>待补指标</label><strong id="metric-pending">0</strong><small>播放/询盘未同步</small></div>
@@ -709,11 +714,13 @@ def render_html(
       const prepared = count(rows, (row) => row.status_class === 'prepared');
       const attention = count(rows, (row) => row.status_class === 'attention');
       const postUrls = count(rows, (row) => !!row.post_url);
+      const missingPostUrls = count(rows, (row) => row.status_class === 'published' && !row.post_url);
       const pending = count(rows, (row) => row.metrics_status === 'PENDING_METRICS' || row.lead_status === 'PENDING_LEADS');
       setText('metric-total', total);
       setText('metric-published', published);
       setText('metric-rate', `成功率 ${{rate(published, total)}}`);
       setText('metric-post-url', postUrls);
+      setText('metric-missing-post-url', missingPostUrls);
       setText('metric-prepared', prepared);
       setText('metric-attention', attention);
       setText('metric-pending', pending);
