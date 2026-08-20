@@ -18,6 +18,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from bitbrowser_rpa_example import (  # noqa: E402
     _facebook_candidate_time_delta_seconds,
     _post_candidate_sort_key,
+    collect_post_url_candidates,
     extract_platform_post_id,
     facebook_business_content_candidate,
     normalize_post_url,
@@ -129,6 +130,61 @@ def test_facebook_post_ids() -> None:
         "https://www.facebook.com/watch?v=122106554229435838",
         "Facebook watch URL",
     )
+    assert_equal(
+        extract_platform_post_id(
+            "https://www.facebook.com/1237975296070200/photos/a.111/122106554229435838/?type=3",
+            "facebook",
+        ),
+        "122106554229435838",
+        "Facebook page photo path URL",
+    )
+    assert_equal(
+        normalize_post_url(
+            "https://www.facebook.com/1237975296070200/photos/a.111/122106554229435838/?type=3&ref=sharing",
+            "facebook",
+        ),
+        "https://www.facebook.com/1237975296070200/photos/a.111/122106554229435838",
+        "Facebook page photo path canonical URL",
+    )
+
+
+class FakePage:
+    def __init__(self, url: str, items: list[dict[str, str]]) -> None:
+        self.url = url
+        self._items = items
+
+    def evaluate(self, script: str) -> list[dict[str, str]]:
+        return self._items
+
+
+def test_facebook_embedded_url_candidates() -> None:
+    page = FakePage(
+        "https://business.facebook.com/latest/posts/published_posts/?asset_id=1237975296070200",
+        [
+            {
+                "source": "text:facebook_public_url",
+                "url": "https://www.facebook.com/1237975296070200/photos/a.111/122106554229435838/?type=3",
+                "text": "16:08",
+            },
+            {
+                "source": "text:facebook_business_content_id",
+                "url": "https://business.facebook.com/latest/insights/object_insights/?content_id=122106554229435839&asset_id=1237975296070200",
+                "text": "16:09",
+            },
+        ],
+    )
+    candidates = collect_post_url_candidates(page, "facebook", tab_index=2)
+    urls = {item["post_url"] for item in candidates}
+    assert_equal(
+        "https://www.facebook.com/1237975296070200/photos/a.111/122106554229435838" in urls,
+        True,
+        "Collect embedded Facebook public photo URL",
+    )
+    assert_equal(
+        "https://www.facebook.com/1237975296070200/posts/122106554229435839" in urls,
+        True,
+        "Collect embedded Facebook Business Suite content_id URL",
+    )
 
 
 def test_facebook_calendar_candidate_order() -> None:
@@ -173,6 +229,7 @@ def main() -> int:
     tests = [
         test_tiktok_post_ids,
         test_facebook_post_ids,
+        test_facebook_embedded_url_candidates,
         test_facebook_calendar_candidate_order,
     ]
     for test in tests:

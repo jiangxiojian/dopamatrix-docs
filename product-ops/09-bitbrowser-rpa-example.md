@@ -453,7 +453,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
 - 发布后 URL 识别未命中时，命令行和确认工作台都会写入 `POST_URL_NOT_FOUND` 和 `RETRY_OR_MANUAL_CHECK`，方便在 JSONL/汇总/操作台里继续追踪。
 - 已新增 `error_action` / `error_action_label` 处置建议字段，按 `error_type/status` 派生 `CHECK_PROXY`、`HUMAN_ACCOUNT_CHECK`、`RETRY_TASK` 等建议，并显示“检查代理”“人工检查账号”等中文说明；静态操作台和确认工作台支持按处理建议筛选。
-- 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析和 FB 内容日历多候选排序。
+- 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析、FB 图片路径、Business Suite 内嵌链接候选和 FB 内容日历多候选排序。
 - 已新增 `rpa_operator_console_selftest.py`，可离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
 - 已新增 `rpa_selftest.py`，一条命令跑完 URL 回收、客户报告页、操作台/工作台和弹窗/异常分类的本地回归。
 
@@ -503,7 +503,7 @@ python docs/scripts/publishing/rpa_selftest.py
 | Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
 | 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；TikTok 现在也能从 Studio / Creator Center 查询参数里的 `item_id`、`video_id`、`aweme_id` 等字段提取 post id，2026-08-19 已用真实 `tiktokstudio/content` 页面回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`；同日 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
-| URL 识别回归自测 | 已验证：`rpa_url_detection_selftest.py` 覆盖 TK 公开视频/Studio 查询参数、FB 公开帖/Business Suite `content_id`、FB 内容日历多候选排序 |
+| URL 识别回归自测 | 已验证：`rpa_url_detection_selftest.py` 覆盖 TK 公开视频/Studio 查询参数、FB 公开帖/图片路径/Business Suite `content_id`、页面内嵌链接候选和 FB 内容日历多候选排序 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 | TikTok Studio / Creator Center 真实页面是否能稳定从查询参数回收 post id | 已验证 | 2026-08-19 使用真实 `tiktokstudio/content` 页面中的 `item_id`/`video_id` 结果回收 post id，并成功回填公开视频链接 |
 

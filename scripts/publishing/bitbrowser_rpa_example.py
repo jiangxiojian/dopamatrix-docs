@@ -748,7 +748,11 @@ def _post_candidate_score(source: str, tab_url: str) -> int:
         "link": 180,
         "text:tiktok_public_url": 230,
         "text:tiktok_item_id": 220,
+        "text:facebook_public_url": 230,
+        "text:facebook_business_content_id": 225,
     }.get(key, 150)
+    if "business_content_id" in key:
+        score = max(score, 225)
     tab_url_lower = tab_url.lower()
     if "latest/composer" in tab_url_lower or "/composer" in tab_url_lower:
         score -= 70
@@ -903,6 +907,7 @@ def extract_platform_post_id(url: str, platform: str) -> str:
             r"/posts/([^/?#]+)",
             r"/reels?/([^/?#]+)",
             r"/videos/([^/?#]+)",
+            r"/photos/(?:[^/?#]+/)?([^/?#]+)",
         ):
             match = re.search(pattern, path, re.IGNORECASE)
             if match:
@@ -1054,6 +1059,24 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
                 const idPattern = /["']?(?:item_id|itemId|item_id_str|itemIdStr|video_id|videoId|aweme_id|awemeId|share_item_id|content_id)["']?\\s*[:=]\\s*["']?(\\d{8,})/gi;
                 for (const match of combined.matchAll(idPattern)) {
                   push('text:tiktok_item_id', `https://www.tiktok.com/player/v1/${match[1]}`, match[0]);
+                  if (items.length > 980) break;
+                }
+              }
+              if (location.hostname.includes('facebook.com')) {
+                const text = document.documentElement ? document.documentElement.innerText || '' : '';
+                const html = document.documentElement ? document.documentElement.innerHTML || '' : '';
+                const combined = `${text}\n${html}`
+                  .replace(/&amp;/g, '&')
+                  .replace(/\\\\u0026/g, '&')
+                  .replace(/\\\\\\//g, '/');
+                const publicUrlPattern = /https?:\/\/(?:www\.|m\.|web\.)?facebook\.com\/(?:[^"'<>\s]+\/posts\/\d+|(?:reel|reels|videos)\/\d+|[^"'<>\s]+\/videos\/\d+|[^"'<>\s]+\/photos\/(?:[^"'<>\s/]+\/)?\d+|story\.php\?[^"'<>\s]*story_fbid=\d+[^"'<>\s]*|permalink\.php\?[^"'<>\s]*story_fbid=\d+[^"'<>\s]*|photo\.php\?[^"'<>\s]*fbid=\d+[^"'<>\s]*|watch\/?\?[^"'<>\s]*v=\d+[^"'<>\s]*)/gi;
+                for (const match of combined.matchAll(publicUrlPattern)) {
+                  push('text:facebook_public_url', match[0], match[0]);
+                  if (items.length > 900) break;
+                }
+                const businessContentPattern = /https?:\/\/business\.facebook\.com\/latest\/insights\/object_insights\/\?[^"'<>\s]*content_id=\d+[^"'<>\s]*/gi;
+                for (const match of combined.matchAll(businessContentPattern)) {
+                  push('text:facebook_business_content_id', match[0], match[0]);
                   if (items.length > 980) break;
                 }
               }
