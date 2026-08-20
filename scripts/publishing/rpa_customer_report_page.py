@@ -400,6 +400,13 @@ def render_html(
       gap: 12px;
       align-items: start;
     }}
+    .overview-panel {{
+      margin-bottom: 12px;
+    }}
+    .overview-table-wrap {{
+      overflow: auto;
+      max-height: 260px;
+    }}
     .panel {{
       background: var(--panel);
       border: 1px solid var(--line);
@@ -500,6 +507,10 @@ def render_html(
       color: var(--muted);
       font-size: 14px;
     }}
+    .mini {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
     .footnote {{
       margin-top: 12px;
       color: var(--muted);
@@ -566,6 +577,30 @@ def render_html(
       </div>
     </section>
 
+    <section class="panel overview-panel">
+      <h2>客户与平台概览</h2>
+      <div class="overview-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>客户</th>
+              <th>产品</th>
+              <th>平台</th>
+              <th>内容类型</th>
+              <th>任务</th>
+              <th>已发布</th>
+              <th>成功率</th>
+              <th>帖子链接</th>
+              <th>最新发布</th>
+              <th>最新活动</th>
+            </tr>
+          </thead>
+          <tbody id="overview-body"></tbody>
+        </table>
+      </div>
+      <div id="overview-empty" class="empty" hidden>没有符合筛选条件的概览记录。</div>
+    </section>
+
     <section class="layout">
       <div class="panel">
         <h2>内容与发布明细</h2>
@@ -623,6 +658,8 @@ def render_html(
     const statusFilter = document.getElementById('status-filter');
     const tbody = document.getElementById('detail-body');
     const emptyState = document.getElementById('empty-state');
+    const overviewBody = document.getElementById('overview-body');
+    const overviewEmpty = document.getElementById('overview-empty');
 
     function esc(value) {{
       return String(value || '').replace(/[&<>"']/g, (ch) => ({{
@@ -642,6 +679,13 @@ def render_html(
       if (productFilter.value !== 'ALL' && row.product_id !== productFilter.value) return false;
       if (platformFilter.value !== 'ALL' && row.platform !== platformFilter.value) return false;
       if (statusFilter.value !== 'ALL' && row.status_label !== statusFilter.value) return false;
+      return true;
+    }}
+
+    function overviewMatches(row) {{
+      if (clientFilter.value !== 'ALL' && row.client_id !== clientFilter.value) return false;
+      if (productFilter.value !== 'ALL' && row.product_id !== productFilter.value) return false;
+      if (platformFilter.value !== 'ALL' && row.platform !== platformFilter.value) return false;
       return true;
     }}
 
@@ -698,6 +742,24 @@ def render_html(
       emptyState.hidden = rows.length !== 0;
     }}
 
+    function renderOverview(rows) {{
+      overviewBody.innerHTML = rows.map((row) => {{
+        return `<tr>
+          <td>${{esc(row.client_id || '-')}}</td>
+          <td>${{esc(row.product_id || '-')}}</td>
+          <td>${{esc(row.platform || '-')}}</td>
+          <td>${{esc(row.content_type || '-')}}</td>
+          <td>${{esc(row.total_tasks || '0')}}</td>
+          <td>${{esc(row.published_count || '0')}}</td>
+          <td>${{esc(row.publish_success_rate || '0.00%')}}</td>
+          <td>${{esc(row.post_url_count || '0')}}</td>
+          <td>${{esc(row.latest_published_at || '-')}}</td>
+          <td class="mini">${{esc(row.latest_activity_at || '-')}}</td>
+        </tr>`;
+      }}).join('');
+      overviewEmpty.hidden = rows.length !== 0;
+    }}
+
     function groupCounts(rows, key) {{
       const map = new Map();
       rows.forEach((row) => {{
@@ -724,8 +786,10 @@ def render_html(
 
     function applyFilters() {{
       const rows = detailRows.filter(matches);
+      const overviewFiltered = overviewRows.filter(overviewMatches);
       updateMetrics(rows);
       renderRows(rows);
+      renderOverview(overviewFiltered);
     }}
 
     [search, clientFilter, productFilter, platformFilter, statusFilter].forEach((node) => {{

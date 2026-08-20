@@ -13,6 +13,7 @@
 - 新增 `scripts/publishing/rpa_customer_report_page.py`，可从客户报告种子 CSV 生成本地静态 HTML，展示发布概览、内容明细、帖子链接、状态分布和待补指标。
 - `rpa_workbench_server.py` 新增“生成客户报告网页”按钮和接口，可一键刷新汇总、导出报告种子并生成 `customer_report.html`。
 - 新增 `scripts/publishing/rpa_url_detection_selftest.py`，用于离线回归检查 TK/FB post id 解析、Business Suite `content_id` 推导和 FB 内容日历多候选排序。
+- 新增 `scripts/publishing/rpa_customer_report_page_selftest.py`，用于离线检查客户报告页概览区、批量样本页和单条已发布页。
 - TikTok 发布后 URL 识别补充 Studio / Creator Center 查询参数场景：脚本现在能从 `item_id`、`video_id`、`aweme_id` 等参数提取 post id，并在缺少用户名时回退到 `player/v1/<post_id>` 可定位链接。
 - 真实 TikTok Studio / Creator Center 发布后页面样本仍待补充，用于确认查询参数回收规则在实机环境下稳定生效。
 
