@@ -1,6 +1,6 @@
 # RPA 发布脚本建设计划
 
-> 更新时间：2026-08-19
+> 更新时间：2026-08-20
 > 文档类型：方案 / 待办拆解  
 > 状态：实施中  
 > 适用阶段：客户试点前  
@@ -48,6 +48,7 @@
 | 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
 | 人工发布后回填 | 已实现基础版 | 支持 `--backfill-publish-id` 回填 `PUBLISHED_MANUAL/REJECTED_MANUAL`、帖子链接、发布时间、人工备注，并追加 JSONL。 |
 | URL 识别回归自测 | 已实现基础版 | 新增 `rpa_url_detection_selftest.py`，离线覆盖 TK/FB URL 解析、Business Suite `content_id` 推导和 FB 内容日历多候选排序。 |
+| 本地一键自测聚合 | 已实现基础版 | 新增 `rpa_selftest.py`，可一条命令串起 URL 回收和客户报告网页两组离线回归。 |
 | 平台发布器拆分 | 已实现基础版 | 新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和注册表，主流程通过 `get_publisher(platform)` 调度平台逻辑。 |
 | 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败。 |
 | RPA 发布操作台 V1 | 已实现基础版 | 新增静态 HTML 生成器，可读取计划表、JSONL、汇总 CSV 和截图，展示任务状态、截图、错误、人工备注和回填命令；支持搜索、状态/平台筛选、复制回填和重试命令，没有服务器和数据库依赖。 |
