@@ -645,7 +645,9 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         task.publish_id, task.platform, task.status, task.account_key, task.profile_name,
         task.profile_id, task.client_id, task.product_id, task.title, task.media_path,
         task.tracking_url, task.post_url, task.platform_post_id,
-        task.error_type, task.error_action, task.error_action_label, task.error_message, task.manual_note
+        task.error_type, task.error_action, task.error_action_label, task.error_message, task.manual_note,
+        task.candidate_count, task.candidate_sources, task.scanned_tab_count,
+        task.scanner_error_count, task.scanner_errors
       ].join(' ').toLowerCase();
     }}
 
@@ -711,6 +713,9 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                 <div>素材：${{esc(task.media_path)}}</div>
                 <div>截图：${{esc(task.screenshot)}}</div>
                 <div>错误：${{esc(task.error_type)}} ${{esc(task.error_action_label || task.error_action)}} ${{esc(task.error_message)}}</div>
+                <div>诊断：候选 ${{esc(task.candidate_count || '')}} / ${{esc(task.candidate_sources || '')}}</div>
+                <div>扫描：${{esc(task.scanned_tab_count || '')}} 页签 / ${{esc(task.scanner_error_count || '')}} 错误</div>
+                <div>${{esc(task.scanner_errors || '')}}</div>
               </div>
               <div class="forms">
                 <section>

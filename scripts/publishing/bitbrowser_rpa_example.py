@@ -198,6 +198,11 @@ SUMMARY_FIELDS = [
     "error_action",
     "error_action_label",
     "error_message",
+    "candidate_count",
+    "candidate_sources",
+    "scanned_tab_count",
+    "scanner_error_count",
+    "scanner_errors",
     "duration_seconds",
     "started_at",
     "finished_at",
@@ -1083,7 +1088,16 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
               return items.slice(0, 1000);
             }"""
         )
-    except Exception:
+    except Exception as exc:
+        candidates.append(
+            {
+                **_empty_post_candidate(),
+                "source": f"error:{type(exc).__name__}",
+                "tab_index": tab_index,
+                "tab_url": tab_url,
+                "text": str(exc)[:160],
+            }
+        )
         items = []
 
     if isinstance(items, list):
@@ -1124,6 +1138,7 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
                 }
             )
 
+    scanner_errors = [item for item in candidates if str(item.get("source", "")).startswith("error:")]
     viable = [item for item in candidates if item.get("post_url") and item.get("platform_post_id")]
     if platform_key == "facebook":
         for item in viable:
@@ -1146,6 +1161,11 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
         "tab_index": best.get("tab_index", 0),
         "tab_url": best.get("tab_url", ""),
         "text": best.get("text", ""),
+        "candidate_count": len(viable),
+        "candidate_sources": sorted({str(item.get("source", "")) for item in viable if item.get("source")}),
+        "scanned_tab_count": len(scanned_tabs),
+        "scanner_error_count": len(scanner_errors),
+        "scanner_errors": scanner_errors[:5],
         "candidates": viable[:10],
         "scanned_tabs": scanned_tabs,
     }
@@ -1184,6 +1204,23 @@ def _summary_value(payload: dict[str, Any], key: str) -> str:
         value = result.get(key, "")
         if value in (None, ""):
             value = plan.get(key, "")
+    if key == "candidate_sources" and isinstance(value, (list, tuple, set)):
+        value = " | ".join(str(item) for item in value if str(item).strip())
+    elif key == "scanner_errors" and isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if not isinstance(item, dict):
+                text = str(item).strip()
+                if text:
+                    parts.append(text)
+                continue
+            source = str(item.get("source", "")).strip()
+            tab_url = str(item.get("tab_url", "")).strip()
+            text = str(item.get("text", "")).strip()
+            chunk = " ".join(part for part in [source, tab_url, text] if part)
+            if chunk:
+                parts.append(chunk)
+        value = " | ".join(parts)
 
     if isinstance(value, bool):
         return "true" if value else "false"

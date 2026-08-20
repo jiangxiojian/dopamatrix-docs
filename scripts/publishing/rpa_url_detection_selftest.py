@@ -149,12 +149,20 @@ def test_facebook_post_ids() -> None:
 
 
 class FakePage:
-    def __init__(self, url: str, items: list[dict[str, str]]) -> None:
+    def __init__(self, url: str, items: list[dict[str, str]] | None = None, error: Exception | None = None) -> None:
         self.url = url
-        self._items = items
+        self._items = items or []
+        self._error = error
 
     def evaluate(self, script: str) -> list[dict[str, str]]:
+        if self._error is not None:
+            raise self._error
         return self._items
+
+
+class FakeContext:
+    def __init__(self, pages: list[FakePage]) -> None:
+        self.pages = pages
 
 
 def test_facebook_embedded_url_candidates() -> None:
@@ -185,6 +193,48 @@ def test_facebook_embedded_url_candidates() -> None:
         True,
         "Collect embedded Facebook Business Suite content_id URL",
     )
+
+
+def test_detection_diagnostics() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    detected_context = FakeContext(
+        [
+            FakePage("https://business.facebook.com/latest/composer"),
+            FakePage(
+                "https://business.facebook.com/latest/posts/published_posts/?asset_id=1237975296070200",
+                [
+                    {
+                        "source": "text:facebook_business_content_id",
+                        "url": "https://business.facebook.com/latest/insights/object_insights/?content_id=122106554229435839&asset_id=1237975296070200",
+                        "text": "16:09",
+                    }
+                ],
+            ),
+        ]
+    )
+    detected = detect_post_url_in_context(detected_context, "facebook")
+    assert_equal(detected["detected"], True, "Detected post URL")
+    assert_equal(detected["candidate_count"], 1, "Detected candidate count")
+    assert_equal(detected["scanned_tab_count"], 2, "Detected scanned tab count")
+    assert_equal(
+        detected["candidate_sources"],
+        ["text:facebook_business_content_id:business_content_id"],
+        "Detected candidate source summary",
+    )
+
+    missed_context = FakeContext(
+        [
+            FakePage("https://business.facebook.com/latest/composer"),
+            FakePage("https://www.facebook.com/", error=RuntimeError("page closed")),
+        ]
+    )
+    missed = detect_post_url_in_context(missed_context, "facebook")
+    assert_equal(missed["detected"], False, "Missed post URL")
+    assert_equal(missed["candidate_count"], 0, "Missed candidate count")
+    assert_equal(missed["scanned_tab_count"], 2, "Missed scanned tab count")
+    assert_equal(missed["scanner_error_count"], 1, "Missed scanner error count")
+    assert_equal(missed["scanner_errors"][0]["source"], "error:RuntimeError", "Scanner error source")
 
 
 def test_facebook_calendar_candidate_order() -> None:
@@ -230,6 +280,7 @@ def main() -> int:
         test_tiktok_post_ids,
         test_facebook_post_ids,
         test_facebook_embedded_url_candidates,
+        test_detection_diagnostics,
         test_facebook_calendar_candidate_order,
     ]
     for test in tests:

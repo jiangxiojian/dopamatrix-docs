@@ -10,11 +10,13 @@
 
 - 新增 `scripts/publishing/rpa_operator_console_selftest.py`，用于离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
 - Facebook 发布后 URL 识别补充公开图片路径 `/photos/.../<id>`，并在页面文本/内嵌 HTML 中扫描 Facebook 公开链接和 Business Suite `content_id` 链接。
+- 发布后 URL 识别结果新增 `candidate_count`、`candidate_sources`、`scanned_tab_count`、`scanner_error_count` 和 `scanner_errors` 诊断字段，便于排查 `POST_URL_NOT_FOUND`。
 
 ### Verified
 
 - `rpa_selftest.py` 现已串起 URL 识别、客户报告页、操作台/工作台和弹窗/异常分类四组离线回归。
 - URL 识别自测新增 Facebook 图片路径和页面内嵌链接候选样本。
+- URL 识别自测新增命中/未命中诊断字段样本。
 
 ## 2026-08-19
 

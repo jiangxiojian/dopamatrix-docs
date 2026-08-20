@@ -49,6 +49,11 @@ FIELDS = [
     "error_action",
     "error_action_label",
     "error_message",
+    "candidate_count",
+    "candidate_sources",
+    "scanned_tab_count",
+    "scanner_error_count",
+    "scanner_errors",
     "screenshot",
     "post_url",
     "platform_post_id",
@@ -176,6 +181,23 @@ def jsonl_value(payload: dict[str, Any], key: str) -> str:
         value = result.get(key, "")
         if value in (None, ""):
             value = plan.get(key, "")
+    if key == "candidate_sources" and isinstance(value, (list, tuple, set)):
+        value = " | ".join(str(item) for item in value if str(item).strip())
+    elif key == "scanner_errors" and isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if not isinstance(item, dict):
+                text = str(item).strip()
+                if text:
+                    parts.append(text)
+                continue
+            source = str(item.get("source", "")).strip()
+            tab_url = str(item.get("tab_url", "")).strip()
+            text = str(item.get("text", "")).strip()
+            chunk = " ".join(part for part in [source, tab_url, text] if part)
+            if chunk:
+                parts.append(chunk)
+        value = " | ".join(parts)
     return stringify(value).strip()
 
 
@@ -357,6 +379,11 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                 "error_action",
                 "error_action_label",
                 "manual_note",
+                "candidate_count",
+                "candidate_sources",
+                "scanned_tab_count",
+                "scanner_error_count",
+                "scanner_errors",
             )
         ).lower()
         cards.append(
@@ -398,6 +425,11 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <div>{escape(row.get('manual_note', ''))}</div>
                 </div>
                 <div class="error">{escape(row.get('error_type', ''))} {escape(row.get('error_action_label') or row.get('error_action', ''))} {escape(row.get('error_message', ''))}</div>
+                <div class="diagnostics">
+                  <div>候选：{escape(row.get('candidate_count', ''))} / 来源：{escape(row.get('candidate_sources', ''))}</div>
+                  <div>扫描页签：{escape(row.get('scanned_tab_count', ''))} / 扫描错误：{escape(row.get('scanner_error_count', ''))}</div>
+                  <div>{escape(row.get('scanner_errors', ''))}</div>
+                </div>
                 <details>
                   <summary>回填命令</summary>
                   <label>已发布</label>
@@ -493,7 +525,7 @@ def render_html(rows: list[dict[str, str]], args: argparse.Namespace, source_inf
     h2 {{ margin: 8px 0 6px; font-size: 18px; }}
     .title {{ margin: 0 0 10px; color: var(--ink); }}
     .meta {{ display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }}
-    .paths, .manual, .error {{ font-size: 12px; color: var(--muted); display: grid; gap: 4px; overflow-wrap: anywhere; }}
+    .paths, .manual, .error, .diagnostics {{ font-size: 12px; color: var(--muted); display: grid; gap: 4px; overflow-wrap: anywhere; }}
     .error {{ color: var(--bad); margin-top: 6px; }}
     details {{ margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }}
     summary {{ cursor: pointer; color: #1849a9; font-size: 13px; }}

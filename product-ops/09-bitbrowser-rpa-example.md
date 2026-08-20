@@ -451,7 +451,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 没有自动确认 Page 是否正确。
 - 没有自动点击最终发布按钮。
 - 已接入发布后 post URL / platform post id 的基础识别与回写，但还要继续拿更多真机样本验证不同平台页面。
-- 发布后 URL 识别未命中时，命令行和确认工作台都会写入 `POST_URL_NOT_FOUND` 和 `RETRY_OR_MANUAL_CHECK`，方便在 JSONL/汇总/操作台里继续追踪。
+- 发布后 URL 识别未命中时，命令行和确认工作台都会写入 `POST_URL_NOT_FOUND` 和 `RETRY_OR_MANUAL_CHECK`，并记录候选数、候选来源、扫描页签数和页面扫描错误，方便在 JSONL/汇总/操作台里继续追踪。
 - 已新增 `error_action` / `error_action_label` 处置建议字段，按 `error_type/status` 派生 `CHECK_PROXY`、`HUMAN_ACCOUNT_CHECK`、`RETRY_TASK` 等建议，并显示“检查代理”“人工检查账号”等中文说明；静态操作台和确认工作台支持按处理建议筛选。
 - 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析、FB 图片路径、Business Suite 内嵌链接候选和 FB 内容日历多候选排序。
 - 已新增 `rpa_operator_console_selftest.py`，可离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
