@@ -168,6 +168,11 @@ def test_error_action_recommendation() -> None:
         "File chooser timeout action",
     )
     assert_equal(
+        recommend_error_action("POST_URL_NOT_FOUND", "PREPARED"),
+        "RETRY_OR_MANUAL_CHECK",
+        "Post URL not found action",
+    )
+    assert_equal(
         recommend_error_action("", "PREPARED"),
         "HUMAN_PUBLISH_CHECK",
         "Prepared draft action",

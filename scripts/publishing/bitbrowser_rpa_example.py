@@ -2521,8 +2521,6 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
     status_key = (status or "").strip().upper()
     if status_key == "PUBLISHED_MANUAL":
         return "DONE"
-    if status_key == "PREPARED":
-        return "HUMAN_PUBLISH_CHECK"
     if status_key in {"REJECTED_MANUAL", "SKIPPED"}:
         return "NO_ACTION"
     if status_key in {"READY", "PLANNED", "RUNNING"} and not error_key:
@@ -2530,6 +2528,8 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
     if status_key in {"FAILED", "PARTIAL"} and not error_key:
         return "HUMAN_REVIEW"
     if not error_key:
+        if status_key == "PREPARED":
+            return "HUMAN_PUBLISH_CHECK"
         return ""
 
     if error_key in {"TASK_TIMEOUT", "BROWSER_TARGET_CLOSED", "PLATFORM_TIMEOUT"}:
@@ -2549,6 +2549,7 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
     if error_key == "PLATFORM_RATE_LIMIT_OR_RESTRICTION":
         return "PAUSE_ACCOUNT"
     if error_key in {
+        "POST_URL_NOT_FOUND",
         "FACEBOOK_FILE_CHOOSER_TIMEOUT",
         "TIKTOK_UPLOAD_NOT_CONFIRMED",
         "FACEBOOK_UPLOAD_NOT_CONFIRMED",
@@ -3351,10 +3352,12 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
         result["status"] = plan_entry.status or "PREPARED"
         if result.get("detected") and args.detect_write_back:
             result["status"] = "PUBLISHED_MANUAL"
-        result["error_action"] = recommend_error_action(
-            "",
-            "PUBLISHED_MANUAL" if result.get("detected") else result["status"],
-        )
+        if result.get("detected"):
+            result["error_action"] = recommend_error_action("", "PUBLISHED_MANUAL")
+        else:
+            result["error_type"] = "POST_URL_NOT_FOUND"
+            result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
+            result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
         payload = {
             "plan": {
                 "started_at": result["checked_at"],
@@ -3400,15 +3403,15 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
             }
             updated = update_publish_plan_row(plan_path, plan_entry.publish_id, updates)
             print("Detected post backfilled:", json.dumps(updated, ensure_ascii=False))
-        elif args.detect_write_back:
-            raise SystemExit("No post URL detected in the current BitBrowser tabs.")
 
         if args.log_json:
             write_json_log(Path(args.log_json).expanduser().resolve(), payload)
             print(f"JSON log written: {Path(args.log_json).expanduser().resolve()}")
-        if args.log_jsonl and result.get("detected"):
+        if args.log_jsonl:
             append_jsonl_log(Path(args.log_jsonl).expanduser().resolve(), payload)
             print(f"JSONL log appended: {Path(args.log_jsonl).expanduser().resolve()}")
+        if not result.get("detected") and args.detect_write_back:
+            raise SystemExit("No post URL detected in the current BitBrowser tabs.")
         return 0
     finally:
         if pw is not None:
