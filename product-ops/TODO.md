@@ -55,7 +55,7 @@
 | --- | --- | --- | --- |
 | 验证比特浏览器 Local API 能否打开指定 TK/FB 环境 | Phase 1 | 完成 | API 调研记录和可复现命令/脚本 |
 | 验证打开后的 TK/FB 浏览器能否被 CDP/Playwright 接管 | Phase 1 | 完成 | 最小上传页控制 Demo 或失败结论 |
-| 定义 `publish_plans` 和 `publish_logs` 表结构 | Phase 0 | 未开始 | 表结构草案 |
+| 定义 `publish_plans` 和 `publish_logs` 表结构 | Phase 0 | 完成草案 | 表结构草案已落到 [11-publish-data-schema.md](./11-publish-data-schema.md)；后续再和数据库实现对齐。 |
 | 在发布计划中加入 `client_id`、`product_id`、`gene_version`、`attribution_token` | Phase 0 | 未开始 | 字段定义和生成规则 |
 | 实现交付目录/CSV 导入 | Phase 1 | 完成 | 能读取 `矩阵投放文案对照表.csv` 的导入流程 |
 | 建立 2-3 个 TikTok 账号和 2-3 个 Facebook Page 管理环境的账号台账 | Phase 1 | 进行中 | `platform_accounts` 试点数据 |

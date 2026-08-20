@@ -8,6 +8,7 @@
 
 ### Added
 
+- 新增 [11-publish-data-schema.md](./11-publish-data-schema.md)，草拟 `publish_plans` / `publish_logs` 的字段、索引和状态流。
 - 新增 `scripts/publishing/rpa_operator_console_selftest.py`，用于离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
 - Facebook 发布后 URL 识别补充公开图片路径 `/photos/.../<id>`，并在页面文本/内嵌 HTML 中扫描 Facebook 公开链接和 Business Suite `content_id` 链接。
 - 发布后 URL 识别结果新增 `candidate_count`、`candidate_sources`、`scanned_tab_count`、`scanner_error_count` 和 `scanner_errors` 诊断字段，便于排查 `POST_URL_NOT_FOUND`。
