@@ -58,7 +58,7 @@
 | 定义 `publish_plans` 和 `publish_logs` 表结构 | Phase 0 | 完成草案 | 表结构草案已落到 [11-publish-data-schema.md](./11-publish-data-schema.md)；后续再和数据库实现对齐。 |
 | 在发布计划中加入 `client_id`、`product_id`、`gene_version`、`attribution_token` | Phase 0 | 未开始 | 字段定义和生成规则 |
 | 实现交付目录/CSV 导入 | Phase 1 | 完成 | 能读取 `矩阵投放文案对照表.csv` 的导入流程 |
-| 建立 2-3 个 TikTok 账号和 2-3 个 Facebook Page 管理环境的账号台账 | Phase 1 | 进行中 | `platform_accounts` 试点数据 |
+| 建立 2-3 个 TikTok 账号和 2-3 个 Facebook Page 管理环境的账号台账 | Phase 1 | 进行中 | `platform_accounts` 试点数据；模板已落到 [12-account-ledger-template.md](./12-account-ledger-template.md)。 |
 | 跑通 3-5 条 TikTok 视频的脚本辅助发布 | Phase 1 | 完成基础版 | 2026-08-14 同素材重复彩排 3 条 TK，均上传和填文案成功，停在发布前 |
 | 跑通 3-5 条 Facebook Page 图文帖的脚本辅助发布 | Phase 1 | 完成基础版 | 2026-08-14 同图片重复彩排 3 条 FB；2026-08-19 单条 FB 图片帖 `PUB-FB-20260819-001-402E5C` 验证上传、填文案、人工发布、URL 回收和报告种子导出成功 |
 | 生成 Facebook 图文帖最小素材 | Phase 1 | 完成基础版 | 已有 FB 图片上传测试素材；后续要接真实产品图文模板 |

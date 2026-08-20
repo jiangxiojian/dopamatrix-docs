@@ -41,7 +41,8 @@ DopaMatrix 当前已经具备内容工厂底座：本地 DAM、Story DSL、FFmpe
 | 9 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) | 比特浏览器 RPA 示例脚本说明。 |
 | 10 | [10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) | RPA 发布脚本从单条验证到批量半自动工具的建设计划和优先级。 |
 | 11 | [11-publish-data-schema.md](./11-publish-data-schema.md) | `publish_plans` / `publish_logs` 的字段、索引和状态流草案。 |
-| 12 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
+| 12 | [12-account-ledger-template.md](./12-account-ledger-template.md) | `账号环境台账.csv` 的字段模板和示例行。 |
+| 13 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
 
 ## 事项清单覆盖关系
 
