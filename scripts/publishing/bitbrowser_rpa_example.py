@@ -89,6 +89,22 @@ PLATFORM_CODES = {
     "tiktok": "TK",
     "facebook": "FB",
 }
+ERROR_ACTION_LABELS = {
+    "DONE": "已完成",
+    "HUMAN_PUBLISH_CHECK": "人工检查并发布",
+    "NO_ACTION": "无需处理",
+    "PENDING": "等待执行",
+    "RETRY_TASK": "重试任务",
+    "CHECK_LOCAL_BROWSER": "检查本机浏览器",
+    "CHECK_PROXY": "检查代理",
+    "HUMAN_ACCOUNT_CHECK": "人工检查账号",
+    "CHECK_PAGE_ACCESS": "检查 Page 权限",
+    "FIX_PLAN": "修正计划表",
+    "FIX_MEDIA": "修正素材",
+    "PAUSE_ACCOUNT": "暂停账号",
+    "RETRY_OR_MANUAL_CHECK": "重试或人工检查",
+    "HUMAN_REVIEW": "人工判断",
+}
 TIKTOK_POST_QUERY_ID_KEYS = (
     "item_id",
     "itemId",
@@ -138,6 +154,7 @@ PUBLISH_PLAN_FIELDS = [
     "result_screenshot",
     "error_type",
     "error_action",
+    "error_action_label",
     "error_message",
     "post_url",
     "platform_post_id",
@@ -179,6 +196,7 @@ SUMMARY_FIELDS = [
     "screenshot",
     "error_type",
     "error_action",
+    "error_action_label",
     "error_message",
     "duration_seconds",
     "started_at",
@@ -197,6 +215,7 @@ SUMMARY_LATEST_OUTCOME_FIELDS = {
     "manual_note",
     "error_type",
     "error_action",
+    "error_action_label",
     "error_message",
     "finished_at",
 }
@@ -231,6 +250,7 @@ SUMMARY_PLAN_COLUMNS = {
     "screenshot": ("result_screenshot", "结果截图"),
     "error_type": ("error_type", "错误类型"),
     "error_action": ("error_action", "处理建议", "处置建议"),
+    "error_action_label": ("error_action_label", "处理建议说明", "处置建议说明"),
     "error_message": ("error_message", "错误信息"),
 }
 PLAN_STATUS_COLUMNS = {
@@ -241,6 +261,7 @@ PLAN_STATUS_COLUMNS = {
     "result_screenshot": ("结果截图",),
     "error_type": ("错误类型",),
     "error_action": ("处理建议", "处置建议"),
+    "error_action_label": ("处理建议说明", "处置建议说明"),
     "error_message": ("错误信息",),
     "post_url": ("帖子链接", "发布链接"),
     "platform_post_id": ("平台post_id", "平台帖子ID", "post_id"),
@@ -1154,6 +1175,8 @@ def flatten_publish_log(payload: dict[str, Any]) -> dict[str, str]:
         row["publish_id"] = "(manual-entry)"
     if not row.get("error_action"):
         row["error_action"] = recommend_error_action(row.get("error_type", ""), row.get("status", ""))
+    if not row.get("error_action_label"):
+        row["error_action_label"] = describe_error_action(row.get("error_action", ""))
     return row
 
 
@@ -1316,6 +1339,10 @@ def build_plan_status_updates(payload: dict[str, Any]) -> dict[str, str]:
         "result_screenshot": str(result.get("screenshot") or ""),
         "error_type": error_type,
         "error_action": str(result.get("error_action") or recommend_error_action(error_type, status)),
+        "error_action_label": str(
+            result.get("error_action_label")
+            or describe_error_action(str(result.get("error_action") or recommend_error_action(error_type, status)))
+        ),
         "error_message": str(result.get("error_message") or ""),
     }
 
@@ -2563,6 +2590,14 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
     return "HUMAN_REVIEW"
 
 
+def describe_error_action(error_action: str) -> str:
+    action_key = (error_action or "").strip().upper()
+    if not action_key:
+        return ""
+    label = ERROR_ACTION_LABELS.get(action_key, "")
+    return f"{label} ({action_key})" if label else action_key
+
+
 def classify_partial_result(result: dict[str, Any]) -> tuple[str, str]:
     platform = str(result.get("platform", "")).lower()
     if not result.get("uploaded"):
@@ -2629,6 +2664,7 @@ def append_plan_failure(
             "status": "FAILED",
             "error_type": classified_error,
             "error_action": recommend_error_action(classified_error, "FAILED"),
+            "error_action_label": describe_error_action(recommend_error_action(classified_error, "FAILED")),
             "error_message": error_message,
             "finished_at": datetime.now().isoformat(timespec="seconds"),
             "duration_seconds": duration_seconds_since(started_at),
@@ -2653,6 +2689,7 @@ def write_failure_logs(
         "status": "FAILED",
         "error_type": classified_error,
         "error_action": recommend_error_action(classified_error, "FAILED"),
+        "error_action_label": describe_error_action(recommend_error_action(classified_error, "FAILED")),
         "raw_error_type": error_type,
         "error_message": error_message,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
@@ -2872,6 +2909,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             result["error_message"] = partial_error_message
         else:
             result["error_action"] = recommend_error_action("", result["status"])
+        result["error_action_label"] = describe_error_action(str(result.get("error_action") or ""))
         result["screenshot"] = str(screenshot_path)
         result["dry_run"] = args.dry_run
         result["finished_at"] = datetime.now().isoformat(timespec="seconds")
@@ -3269,6 +3307,7 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         "last_result_status": status,
         "last_result_at": checked_at,
         "error_action": recommend_error_action("", status),
+        "error_action_label": describe_error_action(recommend_error_action("", status)),
         "post_url": args.post_url or "",
         "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
         "published_at": args.published_at or (checked_at if status == "PUBLISHED_MANUAL" else ""),
@@ -3286,6 +3325,7 @@ def backfill_manual_publish(args: argparse.Namespace) -> None:
         "result": {
             "status": status,
             "error_action": updates["error_action"],
+            "error_action_label": updates["error_action_label"],
             "post_url": args.post_url or "",
             "platform_post_id": platform_post_id if status == "PUBLISHED_MANUAL" else "",
             "published_at": updates["published_at"],
@@ -3358,6 +3398,7 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
             result["error_type"] = "POST_URL_NOT_FOUND"
             result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
             result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
+        result["error_action_label"] = describe_error_action(str(result.get("error_action") or ""))
         payload = {
             "plan": {
                 "started_at": result["checked_at"],
@@ -3393,6 +3434,7 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
                 "last_result_status": "PUBLISHED_MANUAL",
                 "last_result_at": checked_at,
                 "error_action": recommend_error_action("", "PUBLISHED_MANUAL"),
+                "error_action_label": describe_error_action(recommend_error_action("", "PUBLISHED_MANUAL")),
                 "post_url": result.get("post_url", ""),
                 "platform_post_id": result.get("platform_post_id", ""),
                 "published_at": result.get("published_at", checked_at),

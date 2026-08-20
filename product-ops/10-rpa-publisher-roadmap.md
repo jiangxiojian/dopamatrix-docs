@@ -50,7 +50,7 @@
 | URL 识别回归自测 | 已实现基础版 | 新增 `rpa_url_detection_selftest.py`，离线覆盖 TK/FB URL 解析、Business Suite `content_id` 推导和 FB 内容日历多候选排序。 |
 | 本地一键自测聚合 | 已实现基础版 | 新增 `rpa_selftest.py`，可一条命令串起 URL 回收、客户报告网页和弹窗/异常分类三组离线回归。 |
 | 平台发布器拆分 | 已实现基础版 | 新增 `PlatformPublisher`、`TikTokPublisher`、`FacebookPublisher` 和注册表，主流程通过 `get_publisher(platform)` 调度平台逻辑。 |
-| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败，并派生 `error_action` 处置建议。 |
+| 异常分类 | 已实现基础版 | 已能把常见异常归类为 `BITBROWSER_CONNECTION`、`MEDIA_PATH_INVALID`、`ACCOUNT_VERIFICATION`、`LOGIN_REQUIRED`、`PROXY_CONNECTION_FAILED` 等；部分成功会细分 TK/FB 上传或文案失败，并派生 `error_action` / `error_action_label` 处置建议。 |
 | RPA 发布操作台 V1 | 已实现基础版 | 新增静态 HTML 生成器，可读取计划表、JSONL、汇总 CSV 和截图，展示任务状态、截图、错误、人工备注和回填命令；支持搜索、状态/平台筛选、复制回填和重试命令，没有服务器和数据库依赖。 |
 | RPA 确认工作台 MVP | 已实现基础版 | 新增本地 `127.0.0.1` 工作台服务，可在页面里写回 `PUBLISHED_MANUAL/REJECTED_MANUAL/FAILED/READY`，记录账号健康备注，并导出汇总 CSV。 |
 | Tab 隔离 | 已实机验证 | 默认 `--tab-mode new`，每条任务新开 Tab；关闭窗口后重开、窗口已打开再次执行、TK 单条和 FB 单条草稿准备均确认不会覆盖原 Tab。 |

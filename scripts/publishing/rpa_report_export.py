@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from bitbrowser_rpa_example import recommend_error_action
+from bitbrowser_rpa_example import describe_error_action, recommend_error_action
 
 
 DEFAULT_SUMMARY = "publish_summary.csv"
@@ -55,6 +55,7 @@ DETAIL_FIELDS = [
     "manual_note",
     "error_type",
     "error_action",
+    "error_action_label",
     "error_message",
     "views",
     "impressions",
@@ -216,6 +217,7 @@ def build_detail_rows(summary_rows: list[dict[str, str]], snapshot_at: str) -> l
                 "manual_note": row.get("manual_note", ""),
                 "error_type": row.get("error_type", ""),
                 "error_action": error_action,
+                "error_action_label": row.get("error_action_label", "") or describe_error_action(error_action),
                 "error_message": row.get("error_message", ""),
                 "data_source": "rpa_publish_summary",
                 "report_note": report_note,

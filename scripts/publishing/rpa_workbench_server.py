@@ -33,6 +33,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
     DEFAULT_BIT_API,
     append_jsonl_log,
     connect_browser_context,
+    describe_error_action,
     detect_post_url_in_context,
     extract_platform_post_id,
     load_account_ledger,
@@ -251,6 +252,7 @@ class WorkbenchState:
             error_type = error_type if status == "READY" else ""
             error_message = error_message if status == "READY" else ""
         error_action = clean_text(body.get("error_action")) or recommend_error_action(error_type, status)
+        error_action_label = clean_text(body.get("error_action_label")) or describe_error_action(error_action)
 
         updates = {
             "status": status,
@@ -264,6 +266,7 @@ class WorkbenchState:
             "manual_note": manual_note,
             "error_type": error_type,
             "error_action": error_action,
+            "error_action_label": error_action_label,
             "error_message": error_message,
         }
         updated = update_publish_plan_row(self.config.plan_csv, publish_id, updates)
@@ -289,6 +292,7 @@ class WorkbenchState:
                 "manual_note": manual_note,
                 "error_type": error_type,
                 "error_action": error_action,
+                "error_action_label": error_action_label,
                 "error_message": error_message,
                 "finished_at": checked_at,
                 "workbench": True,
@@ -323,6 +327,7 @@ class WorkbenchState:
                 result["error_type"] = "POST_URL_NOT_FOUND"
                 result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
                 result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
+            result["error_action_label"] = describe_error_action(result.get("error_action", ""))
             payload = {
                 "plan": {
                     "publish_id": publish_id,
@@ -633,7 +638,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         task.publish_id, task.platform, task.status, task.account_key, task.profile_name,
         task.profile_id, task.client_id, task.product_id, task.title, task.media_path,
         task.tracking_url, task.post_url, task.platform_post_id,
-        task.error_type, task.error_action, task.error_message, task.manual_note
+        task.error_type, task.error_action, task.error_action_label, task.error_message, task.manual_note
       ].join(' ').toLowerCase();
     }}
 
@@ -696,7 +701,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                 <div>发布时间：${{esc(task.published_at)}}</div>
                 <div>素材：${{esc(task.media_path)}}</div>
                 <div>截图：${{esc(task.screenshot)}}</div>
-                <div>错误：${{esc(task.error_type)}} ${{esc(task.error_action)}} ${{esc(task.error_message)}}</div>
+                <div>错误：${{esc(task.error_type)}} ${{esc(task.error_action_label || task.error_action)}} ${{esc(task.error_message)}}</div>
               </div>
               <div class="forms">
                 <section>
@@ -716,6 +721,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                     <label>发布时间<input name="${{fieldName(task.publish_id, 'published_at')}}" value="${{esc(task.published_at || '')}}" placeholder="YYYY-MM-DDTHH:MM:SS"></label>
                     <label>错误类型<input name="${{fieldName(task.publish_id, 'error_type')}}" value="${{esc(task.error_type)}}"></label>
                     <label>处理建议<input name="${{fieldName(task.publish_id, 'error_action')}}" value="${{esc(task.error_action)}}"></label>
+                    <label>建议说明<input name="${{fieldName(task.publish_id, 'error_action_label')}}" value="${{esc(task.error_action_label)}}"></label>
                     <label class="wide">备注<textarea name="${{fieldName(task.publish_id, 'manual_note')}}">${{esc(task.manual_note)}}</textarea></label>
                     <label class="wide">错误信息<textarea name="${{fieldName(task.publish_id, 'error_message')}}">${{esc(task.error_message)}}</textarea></label>
                   </div>
@@ -774,6 +780,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         manual_note: value(id, 'manual_note'),
         error_type: value(id, 'error_type'),
         error_action: value(id, 'error_action'),
+        error_action_label: value(id, 'error_action_label'),
         error_message: value(id, 'error_message')
       }};
       await api('/api/backfill', {{ method: 'POST', body: JSON.stringify(body) }});

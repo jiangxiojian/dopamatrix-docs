@@ -13,6 +13,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
     BitBrowserError,
     classify_error,
     classify_partial_result,
+    describe_error_action,
     dismiss_safe_popups,
     handle_content_check_popup,
     recommend_error_action,
@@ -171,6 +172,11 @@ def test_error_action_recommendation() -> None:
         recommend_error_action("POST_URL_NOT_FOUND", "PREPARED"),
         "RETRY_OR_MANUAL_CHECK",
         "Post URL not found action",
+    )
+    assert_equal(
+        describe_error_action("CHECK_PROXY"),
+        "检查代理 (CHECK_PROXY)",
+        "Error action label",
     )
     assert_equal(
         recommend_error_action("", "PREPARED"),

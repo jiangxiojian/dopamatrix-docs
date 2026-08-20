@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from bitbrowser_rpa_example import recommend_error_action
+from bitbrowser_rpa_example import describe_error_action, recommend_error_action
 
 
 DEFAULT_PLAN = "publish_plan.csv"
@@ -47,6 +47,7 @@ FIELDS = [
     "duration_seconds",
     "error_type",
     "error_action",
+    "error_action_label",
     "error_message",
     "screenshot",
     "post_url",
@@ -118,6 +119,7 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
         "screenshot": first_nonempty(row, "result_screenshot", "screenshot", "结果截图"),
         "error_type": first_nonempty(row, "error_type", "错误类型"),
         "error_action": first_nonempty(row, "error_action", "处理建议", "处置建议"),
+        "error_action_label": first_nonempty(row, "error_action_label", "处理建议说明", "处置建议说明"),
         "error_message": first_nonempty(row, "error_message", "错误信息"),
         "post_url": first_nonempty(row, "post_url", "帖子链接", "发布链接"),
         "platform_post_id": first_nonempty(row, "platform_post_id", "平台post_id", "平台帖子ID", "post_id"),
@@ -135,6 +137,8 @@ def normalize_summary_row(row: dict[str, str]) -> dict[str, str]:
     normalized["profile_id"] = row.get("profile_id", "").strip()
     if not normalized.get("error_action"):
         normalized["error_action"] = recommend_error_action(normalized.get("error_type", ""), normalized.get("status", ""))
+    if not normalized.get("error_action_label"):
+        normalized["error_action_label"] = describe_error_action(normalized.get("error_action", ""))
     return normalized
 
 
@@ -181,6 +185,8 @@ def normalize_jsonl_row(payload: dict[str, Any]) -> dict[str, str]:
         row["publish_id"] = "(manual-entry)"
     if not row.get("error_action"):
         row["error_action"] = recommend_error_action(row.get("error_type", ""), row.get("status", ""))
+    if not row.get("error_action_label"):
+        row["error_action_label"] = describe_error_action(row.get("error_action", ""))
     return row
 
 
@@ -221,6 +227,8 @@ def merge_rows(plan_rows: list[dict[str, str]], summary_rows: list[dict[str, str
     for row in merged.values():
         if not row.get("error_action"):
             row["error_action"] = recommend_error_action(row.get("error_type", ""), row.get("status", ""))
+        if not row.get("error_action_label"):
+            row["error_action_label"] = describe_error_action(row.get("error_action", ""))
 
     return sorted(merged.values(), key=lambda item: (item.get("platform", ""), item.get("publish_id", "")))
 
@@ -347,6 +355,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                 "attribution_token",
                 "error_type",
                 "error_action",
+                "error_action_label",
                 "manual_note",
             )
         ).lower()
@@ -388,7 +397,7 @@ def render_rows(rows: list[dict[str, str]], plan_dir: Path, log_jsonl: str) -> s
                   <div>人工：{escape(row.get('manual_operator', ''))} {escape(row.get('manual_checked_at', ''))}</div>
                   <div>{escape(row.get('manual_note', ''))}</div>
                 </div>
-                <div class="error">{escape(row.get('error_type', ''))} {escape(row.get('error_action', ''))} {escape(row.get('error_message', ''))}</div>
+                <div class="error">{escape(row.get('error_type', ''))} {escape(row.get('error_action_label') or row.get('error_action', ''))} {escape(row.get('error_message', ''))}</div>
                 <details>
                   <summary>回填命令</summary>
                   <label>已发布</label>
