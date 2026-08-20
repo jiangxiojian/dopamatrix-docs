@@ -22,7 +22,7 @@
 | --- | --- | --- | --- |
 | P0 | 客户报告网页 V1 | 完成基础版 | `rpa_customer_report_page.py` 可从 `customer_report_seed.csv` / `customer_report_overview.csv` 生成本地 HTML，覆盖发布量、成功率、帖子链接、待回收链接、内容明细、待补指标。 |
 | P1 | 客户报告网页自测 | 完成基础版 | `rpa_customer_report_page_selftest.py` 可离线检查批量样本页、单条已发布页和概览区。 |
-| P1 | 本地一键自测聚合 | 完成基础版 | `rpa_selftest.py` 可一条命令跑完 URL 回收、客户报告网页和弹窗/异常分类三组离线回归。 |
+| P1 | 本地一键自测聚合 | 完成基础版 | `rpa_selftest.py` 可一条命令跑完 URL 回收、客户报告网页、操作台/工作台和弹窗/异常分类离线回归。 |
 | P0 | 发布回收和稳定性 | 进行中 | 继续补 TK/FB 发布后 URL 回收样本、异常分类和弹窗库，降低误回填、卡死、误判和人工排查成本。 |
 
 | 优先级 | 事项 | 状态 | 产出 |
@@ -43,6 +43,7 @@
 | P1 | URL 识别回归自测 | 完成基础版 | `rpa_url_detection_selftest.py` 覆盖 TK/FB post id 解析、Business Suite `content_id` 和 FB 内容日历候选排序。 |
 | P1 | RPA 发布操作台 V1 | 完成基础版 | 静态 HTML 读取计划表、JSONL、汇总 CSV 和截图，展示任务状态，并支持生成/复制人工回填命令。 |
 | P1 | RPA 操作台静态增强 | 完成基础版 | 支持搜索、状态/平台/处理建议筛选、复制回填命令、复制失败/部分成功重试命令，并自动带上 JSONL 日志路径。 |
+| P1 | RPA 操作台/工作台自测 | 完成基础版 | `rpa_operator_console_selftest.py` 可离线检查操作台处理建议筛选、回填命令和确认工作台筛选 UI。 |
 | P2 | RPA 操作台增强为确认工作台 | 完成 MVP | 本地工作台可在页面写回状态、记录账号健康备注、选择失败重试为 READY，并导出汇总 CSV。 |
 | P1 | 补 Facebook Page 视频/Reels 测试 | 完成基础版 | 2026-08-17 已实机验证 1 条真实视频/Reels 草稿准备；脚本会等到媒体处理确认后再写回 `PREPARED`，且不会点击最终发布。 |
 | P1 | 拆分平台发布器并细化异常分类 | 完成基础版 | 已新增 `TikTokPublisher` / `FacebookPublisher` 注册表，并补平台级上传、caption、FB Page 权限和 file chooser 超时分类。 |

@@ -4,6 +4,16 @@
 > 文档类型：变更日志  
 > 状态：草案
 
+## 2026-08-20
+
+### Added
+
+- 新增 `scripts/publishing/rpa_operator_console_selftest.py`，用于离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
+
+### Verified
+
+- `rpa_selftest.py` 现已串起 URL 识别、客户报告页、操作台/工作台和弹窗/异常分类四组离线回归。
+
 ## 2026-08-19
 
 ### Added

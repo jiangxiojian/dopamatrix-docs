@@ -454,7 +454,8 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 - 发布后 URL 识别未命中时，命令行和确认工作台都会写入 `POST_URL_NOT_FOUND` 和 `RETRY_OR_MANUAL_CHECK`，方便在 JSONL/汇总/操作台里继续追踪。
 - 已新增 `error_action` / `error_action_label` 处置建议字段，按 `error_type/status` 派生 `CHECK_PROXY`、`HUMAN_ACCOUNT_CHECK`、`RETRY_TASK` 等建议，并显示“检查代理”“人工检查账号”等中文说明；静态操作台和确认工作台支持按处理建议筛选。
 - 已新增 `rpa_url_detection_selftest.py`，可离线回归检查 TK/FB URL 解析和 FB 内容日历多候选排序。
-- 已新增 `rpa_selftest.py`，一条命令跑完 URL 回收、客户报告页和弹窗/异常分类的本地回归。
+- 已新增 `rpa_operator_console_selftest.py`，可离线检查静态操作台的处理建议筛选、回填命令和确认工作台筛选 UI。
+- 已新增 `rpa_selftest.py`，一条命令跑完 URL 回收、客户报告页、操作台/工作台和弹窗/异常分类的本地回归。
 
 生产化时需要补：
 
