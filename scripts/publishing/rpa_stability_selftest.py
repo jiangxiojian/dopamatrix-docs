@@ -203,6 +203,39 @@ def test_partial_result_classification() -> None:
     )
 
 
+def test_summary_diagnostics_fields() -> None:
+    from bitbrowser_rpa_example import flatten_publish_log
+
+    row = flatten_publish_log(
+        {
+            "plan": {"publish_id": "PUB-XYZ", "status": "PREPARED"},
+            "result": {
+                "status": "PREPARED",
+                "candidate_count": 2,
+                "candidate_sources": ["tab_url", "text:facebook_public_url"],
+                "scanned_tab_count": 3,
+                "scanner_error_count": 1,
+                "scanner_errors": [
+                    {
+                        "source": "error:RuntimeError",
+                        "tab_url": "https://www.facebook.com/",
+                        "text": "page closed",
+                    }
+                ],
+            },
+        }
+    )
+    assert_equal(row["candidate_count"], "2", "Summary candidate count")
+    assert_equal(row["candidate_sources"], "tab_url | text:facebook_public_url", "Summary candidate sources")
+    assert_equal(row["scanned_tab_count"], "3", "Summary scanned tab count")
+    assert_equal(row["scanner_error_count"], "1", "Summary scanner error count")
+    assert_equal(
+        row["scanner_errors"],
+        "error:RuntimeError https://www.facebook.com/ page closed",
+        "Summary scanner errors",
+    )
+
+
 def main() -> int:
     tests = [
         test_popup_dismissal,
@@ -210,6 +243,7 @@ def main() -> int:
         test_error_classification,
         test_error_action_recommendation,
         test_partial_result_classification,
+        test_summary_diagnostics_fields,
     ]
     for test in tests:
         test()

@@ -85,6 +85,11 @@ def run_console() -> str:
                 "status",
                 "error_type",
                 "error_message",
+                "candidate_count",
+                "candidate_sources",
+                "scanned_tab_count",
+                "scanner_error_count",
+                "scanner_errors",
                 "finished_at",
             ],
             [
@@ -94,6 +99,11 @@ def run_console() -> str:
                     "status": "FAILED",
                     "error_type": "PROXY_CONNECTION_FAILED",
                     "error_message": "proxy failed",
+                    "candidate_count": "2",
+                    "candidate_sources": "tab_url | text:facebook_public_url",
+                    "scanned_tab_count": "3",
+                    "scanner_error_count": "1",
+                    "scanner_errors": "error:RuntimeError https://www.facebook.com/ page closed",
                     "finished_at": "2026-08-20T10:30:00",
                 },
                 {
@@ -130,6 +140,9 @@ def test_operator_console() -> None:
     assert_contains(html, "data-filter-action=\"DONE\"", "done action filter")
     assert_contains(html, "检查代理 (CHECK_PROXY)", "proxy action label")
     assert_contains(html, "已完成 (DONE)", "done action label")
+    assert_contains(html, "候选：2 / 来源：tab_url | text:facebook_public_url", "diagnostic summary")
+    assert_contains(html, "扫描页签：3 / 扫描错误：1", "diagnostic counts")
+    assert_contains(html, "error:RuntimeError https://www.facebook.com/ page closed", "diagnostic errors")
     assert_contains(html, "--log-jsonl", "log jsonl command")
     assert_contains(html, "--content-check-action cancel", "retry command")
 
@@ -138,6 +151,8 @@ def test_workbench_markup() -> None:
     html = render_page()
     assert_contains(html, 'id="actionFilter"', "workbench action select")
     assert_contains(html, "全部建议", "workbench action label")
+    assert_contains(html, "candidate_count", "workbench diagnostic search text")
+    assert_contains(html, "诊断：候选", "workbench diagnostic summary")
     assert_contains(html, "task.error_action", "workbench action filter logic")
     assert_contains(html, "task.error_action_label", "workbench action label usage")
     assert_contains(html, "actionFilter.addEventListener('change', renderTasks);", "workbench change listener")
