@@ -1,6 +1,6 @@
 # 运营产品化文档索引
 
-> 更新时间：2026-08-12  
+> 更新时间：2026-08-21  
 > 来源：事项清单截图之后的讨论  
 > 状态：规划草案。用于记录当前决策、边界和待验证假设，不等同于已上线功能。
 
@@ -42,7 +42,9 @@ DopaMatrix 当前已经具备内容工厂底座：本地 DAM、Story DSL、FFmpe
 | 10 | [10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) | RPA 发布脚本从单条验证到批量半自动工具的建设计划和优先级。 |
 | 11 | [11-publish-data-schema.md](./11-publish-data-schema.md) | `publish_plans` / `publish_logs` 的字段、索引和状态流草案。 |
 | 12 | [12-account-ledger-template.md](./12-account-ledger-template.md) | `账号环境台账.csv` 的字段模板和示例行。 |
-| 13 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
+| 13 | [13-rpa-script-runbook.md](./13-rpa-script-runbook.md) | 脚本的实际操作手册和常用命令。 |
+| 14 | [14-rpa-preflight-checklist.md](./14-rpa-preflight-checklist.md) | 发布前手工准备清单和交付 CSV 模板。 |
+| 15 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
 
 ## 事项清单覆盖关系
 

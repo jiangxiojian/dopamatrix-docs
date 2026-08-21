@@ -1,0 +1,104 @@
+# RPA 发布前准备清单与模板
+
+> 更新时间：2026-08-21  
+> 文档类型：准备清单  
+> 状态：草案
+
+## 你需要先准备什么
+
+这份清单是给“开跑前的人”看的。  
+如果这些东西没准备好，脚本就只能等，或者直接停下来。
+
+## 手工准备清单
+
+| 项目 | 必要 | 说明 | 模板 / 参考 |
+| --- | --- | --- | --- |
+| BitBrowser 已安装 | 是 | 本机要能打开指定环境。 | 见 [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) |
+| Local API 已开启 | 是 | `POST /health` 和 `/browser/open` 要通。 | 同上 |
+| 平台账号已登录 | 是 | TK / FB Page 账号先登录好。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
+| 代理已配置 | 是 | 环境要绑定可用代理。 | 账号台账里记录代理地区和供应商 |
+| `账号环境台账.csv` | 是 | 记录账号键、窗口 ID 和默认处理方式。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
+| `矩阵投放文案对照表.csv` | 是 | 交付 CSV，供脚本匹配素材和文案。 | 本文模板 |
+| 素材目录 | 是 | `videos/`、`images/` 或实际素材目录。 | 见下方目录结构 |
+| `publish_plan.csv` | 否 | 可以手工准备，也可以让脚本自动生成。 | [11-publish-data-schema.md](./11-publish-data-schema.md) |
+| Facebook 入口 URL | 视情况 | FB 视频/Reels/快拍建议手工确认入口再填。 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) |
+| 输出目录 | 是 | 用来放日志、汇总、截图和报告。 | 例如 `E:\project\dopaMatrix\output\publish-rpa\` |
+| 操作人名称 | 建议 | 写入工作台、日志和回填记录。 | `--operator` / `--manual-operator` |
+| 测试说明 | 建议 | 哪条任务是测试、哪条是正式跑批。 | `note` / `manual_note` |
+
+## 推荐目录结构
+
+```text
+delivery-package/
+  videos/
+  images/
+  矩阵投放文案对照表.csv
+  账号环境台账.csv
+  publish_plan.csv
+  publish_logs.jsonl
+```
+
+## `矩阵投放文案对照表.csv` 模板
+
+这是脚本生成 caption 时最重要的人工输入之一。
+
+### CSV 头
+
+```csv
+视频文件名,社交平台标题,情绪化描述,黄金标签,追踪短链接
+```
+
+### 说明
+
+| 字段 | 说明 |
+| --- | --- |
+| `视频文件名` | 素材文件名。脚本用它去匹配 `media`。图片也可以放在这里，只要文件名能对上。 |
+| `社交平台标题` | 计划里的标题。 |
+| `情绪化描述` | 主要文案。 |
+| `黄金标签` | 标签或 hashtags。 |
+| `追踪短链接` | 用于归因和回收。 |
+
+### 示例行
+
+```csv
+视频文件名,社交平台标题,情绪化描述,黄金标签,追踪短链接
+Tk01_CoreTag_极度渴望_32f22a.mp4,极度渴望核心款,本条仅用于内部测试，请勿公开发布,#DopaMatrix #Test,https://trk.example/tk-001
+Fb01_CoreTag_极度渴望_9ac11d.jpg,极度渴望图文测试,本条仅用于内部测试，请勿公开发布,#DopaMatrix #Test,https://trk.example/fb-001
+```
+
+## `publish_plan.csv` 模板
+
+如果你不想手工拼计划表，可以直接看这份结构草案：
+
+- [11-publish-data-schema.md](./11-publish-data-schema.md)
+
+如果你想先看脚本实际会怎么读，优先看：
+
+- [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md)
+
+## `账号环境台账.csv` 模板
+
+账号台账的字段已经单独整理成模板：
+
+- [12-account-ledger-template.md](./12-account-ledger-template.md)
+
+## 发布前检查
+
+跑正式任务前，最好再核一次：
+
+1. `account_key` 和 `profile_id` 是否对上。
+2. `media_path` 是否真能找到文件。
+3. `tracking_url` 是否要保留。
+4. Facebook 视频/Reels 的入口 URL 是否已人工确认。
+5. 计划表里的 `status` 是否是 `READY`。
+6. 输出目录是否有写权限。
+7. 这一批是否只准备做草稿，不点最终发布。
+
+## 哪些东西可以晚点补
+
+- 账号健康备注
+- `publish_summary.csv`
+- 客户报告页
+- 人工回填后的 `manual_note`
+
+这些可以在第一轮草稿跑完后再补，但不要把最基础的台账和交付 CSV 省掉。
