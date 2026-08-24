@@ -14,6 +14,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from rpa_operator_console import generate_console  # noqa: E402
 from rpa_workbench_server import WorkbenchConfig, WorkbenchState, render_page  # noqa: E402
+from bitbrowser_rpa_example import generate_publish_plan, load_publish_plan  # noqa: E402
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
@@ -232,6 +233,84 @@ def test_workbench_prepare_tasks() -> None:
                 raise AssertionError(f"prepare argv missing {needle!r}: {argv}")
 
 
+def test_generated_plan_uses_rpa_work() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        delivery_csv = root / "矩阵投放文案对照表.csv"
+        ledger_csv = root / "账号环境台账.csv"
+        videos_dir = root / "videos"
+        images_dir = root / "images"
+        videos_dir.mkdir()
+        images_dir.mkdir()
+        (videos_dir / "demo_video.mp4").write_bytes(b"video")
+        (images_dir / "demo_image.jpg").write_bytes(b"image")
+        write_csv(
+            delivery_csv,
+            ["视频文件名", "社交平台标题", "情绪化描述", "黄金标签", "追踪短链接"],
+            [
+                {
+                    "视频文件名": "demo_video.mp4",
+                    "社交平台标题": "Video title",
+                    "情绪化描述": "Video caption",
+                    "黄金标签": "#video",
+                    "追踪短链接": "https://trk.example/video",
+                },
+                {
+                    "视频文件名": "demo_image.jpg",
+                    "社交平台标题": "Image title",
+                    "情绪化描述": "Image caption",
+                    "黄金标签": "#image",
+                    "追踪短链接": "https://trk.example/image",
+                },
+            ],
+        )
+        write_csv(
+            ledger_csv,
+            ["account_key", "platform", "profile_id"],
+            [
+                {"account_key": "tk_test", "platform": "tiktok", "profile_id": "tk-profile"},
+                {"account_key": "fb_test", "platform": "facebook", "profile_id": "fb-profile"},
+            ],
+        )
+        args = type(
+            "Args",
+            (),
+            {
+                "delivery_dir": str(root),
+                "delivery_csv": "",
+                "account_ledger": "",
+                "output_plan_csv": "",
+                "overwrite_plan": False,
+                "plan_video_platforms": "tiktok",
+                "plan_image_platforms": "facebook",
+                "plan_repeat": 1,
+                "plan_facebook_video_mode": "post",
+                "plan_facebook_video_composer_url": "",
+                "plan_client_id": "DMX",
+                "plan_product_id": "RPA-WORK",
+                "plan_operator": "tester",
+                "plan_note": "",
+                "plan_initial_status": "READY",
+                "plan_scheduled_start": "",
+                "plan_interval_minutes": 0,
+                "plan_attribution_prefix": "",
+            },
+        )()
+        result = generate_publish_plan(args)
+        if result != 0:
+            raise AssertionError(f"generate_publish_plan returned {result}")
+        plan_csv = root / "rpa_work" / "publish_plan.csv"
+        if not plan_csv.is_file():
+            raise AssertionError(f"plan was not created in rpa_work: {plan_csv}")
+        if (root / "publish_plan.csv").exists():
+            raise AssertionError("legacy root publish_plan.csv should not be created")
+        media_paths = {entry.media_path for entry in load_publish_plan(plan_csv)}
+        if "../videos/demo_video.mp4" not in media_paths:
+            raise AssertionError(f"video path should point back to videos: {media_paths}")
+        if "../images/demo_image.jpg" not in media_paths:
+            raise AssertionError(f"image path should point back to images: {media_paths}")
+
+
 def main() -> int:
     test_operator_console()
     print("PASS test_operator_console")
@@ -239,7 +318,9 @@ def main() -> int:
     print("PASS test_workbench_markup")
     test_workbench_prepare_tasks()
     print("PASS test_workbench_prepare_tasks")
-    print("RPA operator console self-test passed: 3 groups")
+    test_generated_plan_uses_rpa_work()
+    print("PASS test_generated_plan_uses_rpa_work")
+    print("RPA operator console self-test passed: 4 groups")
     return 0
 
 

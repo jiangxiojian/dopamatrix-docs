@@ -15,14 +15,14 @@ Usage examples:
       --profile-id YOUR_BIT_PROFILE_ID ^
       --media E:\\project\\dopaMatrix\\dopamatrix_delivery_1781700321(1)\\videos\\demo.mp4 ^
       --delivery-csv E:\\project\\dopaMatrix\\dopamatrix_delivery_1781700321(1)\\矩阵投放文案对照表.csv ^
-      --screenshot output\\publish-rpa\\tk-demo.png
+      --screenshot E:\\project\\dopaMatrix\\dopamatrix_delivery_1781700321(1)\\rpa_work\\screenshots\\tk-demo.png
 
     python docs/scripts/publishing/bitbrowser_rpa_example.py ^
       --platform facebook ^
       --profile-id YOUR_FB_PROFILE_ID ^
-      --media E:\\project\\dopaMatrix\\output\\fb-image.jpg ^
+      --media E:\\project\\dopaMatrix\\dopamatrix_delivery_1781700321(1)\\images\\fb-image.jpg ^
       --caption "Facebook post text" ^
-      --screenshot output\\publish-rpa\\fb-demo.png
+      --screenshot E:\\project\\dopaMatrix\\dopamatrix_delivery_1781700321(1)\\rpa_work\\screenshots\\fb-demo.png
 
 Requirements:
 
@@ -44,6 +44,7 @@ import multiprocessing as mp
 import csv
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -60,9 +61,11 @@ DEFAULT_BIT_API = "http://127.0.0.1:54345"
 DEFAULT_TIKTOK_UPLOAD_URL = "https://www.tiktok.com/upload?lang=en"
 DEFAULT_FACEBOOK_COMPOSER_URL = "https://business.facebook.com/latest/composer"
 DEFAULT_UPLOAD_WAIT_MS = 60_000
-DEFAULT_SCREENSHOT = "output/publish-rpa/screenshot.png"
-DEFAULT_LOG_JSONL = "output/publish-rpa/publish_logs.jsonl"
-DEFAULT_SUMMARY_CSV = "output/publish-rpa/publish_summary.csv"
+DEFAULT_WORK_DIRNAME = "rpa_work"
+DEFAULT_SCREENSHOT_DIRNAME = "screenshots"
+DEFAULT_SCREENSHOT = f"{DEFAULT_WORK_DIRNAME}/{DEFAULT_SCREENSHOT_DIRNAME}/screenshot.png"
+DEFAULT_LOG_JSONL = f"{DEFAULT_WORK_DIRNAME}/publish_logs.jsonl"
+DEFAULT_SUMMARY_CSV = f"{DEFAULT_WORK_DIRNAME}/publish_summary.csv"
 DEFAULT_PLAN_FILENAME = "publish_plan.csv"
 DEFAULT_DELIVERY_CSV_FILENAME = "矩阵投放文案对照表.csv"
 DEFAULT_ACCOUNT_LEDGER_FILENAME = "账号环境台账.csv"
@@ -316,6 +319,42 @@ class DeliveryPackageCandidate:
     media_count: int
 
 
+def default_delivery_work_dir(delivery_dir: Path) -> Path:
+    return delivery_dir / DEFAULT_WORK_DIRNAME
+
+
+def default_delivery_plan_path(delivery_dir: Path) -> Path:
+    return default_delivery_work_dir(delivery_dir) / DEFAULT_PLAN_FILENAME
+
+
+def plan_work_dir_for_plan(plan_path: Path) -> Path:
+    plan_dir = plan_path.parent
+    if plan_dir.name == DEFAULT_WORK_DIRNAME:
+        return plan_dir
+    return plan_dir / DEFAULT_WORK_DIRNAME
+
+
+def legacy_delivery_plan_path(delivery_dir: Path) -> Path:
+    return delivery_dir / DEFAULT_PLAN_FILENAME
+
+
+def delivery_plan_paths(delivery_dir: Path) -> list[Path]:
+    paths = [default_delivery_plan_path(delivery_dir), legacy_delivery_plan_path(delivery_dir)]
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved not in unique:
+            unique.append(resolved)
+    return unique
+
+
+def existing_delivery_plan_path(delivery_dir: Path) -> Path | None:
+    for path in delivery_plan_paths(delivery_dir):
+        if path.is_file():
+            return path
+    return None
+
+
 def project_root() -> Path:
     script_path = Path(__file__).resolve()
     try:
@@ -396,8 +435,8 @@ def find_one_click_generation_candidates() -> list[DeliveryPackageCandidate]:
                 continue
             delivery_dir = delivery_csv.parent.resolve()
             account_ledger = delivery_dir / DEFAULT_ACCOUNT_LEDGER_FILENAME
-            plan_path = delivery_dir / DEFAULT_PLAN_FILENAME
-            if not account_ledger.is_file() or plan_path.exists():
+            plan_path = default_delivery_plan_path(delivery_dir)
+            if not account_ledger.is_file() or existing_delivery_plan_path(delivery_dir):
                 continue
             media_count = len(scan_media_files(delivery_dir, VIDEO_EXTENSIONS | IMAGE_EXTENSIONS))
             if media_count == 0:
@@ -475,7 +514,7 @@ def configure_one_click(args: argparse.Namespace) -> argparse.Namespace:
     if not args.task_timeout_seconds:
         args.task_timeout_seconds = DEFAULT_TASK_TIMEOUT_SECONDS
     if not args.log_jsonl:
-        args.log_jsonl = str(project_root() / DEFAULT_LOG_JSONL)
+        args.log_jsonl = str(plan_work_dir_for_plan(plan_path) / Path(DEFAULT_LOG_JSONL).name)
 
     print("One-click prepare mode")
     print(f"Plan: {plan_path}")
@@ -1681,7 +1720,7 @@ def parse_platform_list(value: str, option_name: str) -> list[str]:
 
 
 def scan_media_files(delivery_dir: Path, extensions: set[str]) -> list[Path]:
-    ignored_dirs = {".git", "__pycache__", "node_modules"}
+    ignored_dirs = {".git", "__pycache__", "node_modules", DEFAULT_WORK_DIRNAME}
     files: list[Path] = []
     for path in delivery_dir.rglob("*"):
         if not path.is_file():
@@ -1704,7 +1743,7 @@ def find_media_by_name(delivery_dir: Path, media_name: str, extensions: set[str]
 
 def relative_media_path_for_plan(media_path: Path, base_dir: Path) -> str:
     try:
-        return media_path.resolve().relative_to(base_dir.resolve()).as_posix()
+        return Path(os.path.relpath(media_path.resolve(), base_dir.resolve())).as_posix()
     except ValueError:
         return str(media_path.resolve())
 
@@ -1841,8 +1880,8 @@ def collect_generation_media(
     for record in records:
         media_path = find_media_by_name(delivery_dir, record.video_filename, VIDEO_EXTENSIONS)
         if media_path is None:
-            if record.video_filename:
-                warnings.append(f"Delivery CSV row has no matching video file: {record.video_filename}")
+            if record.video_filename and find_media_by_name(delivery_dir, record.video_filename, IMAGE_EXTENSIONS) is None:
+                warnings.append(f"Delivery CSV row has no matching media file: {record.video_filename}")
             continue
         videos.append((media_path, record))
         used_video_paths.add(media_path)
@@ -1941,8 +1980,15 @@ def generate_publish_plan(args: argparse.Namespace) -> int:
     output_path = (
         Path(args.output_plan_csv).expanduser().resolve()
         if args.output_plan_csv
-        else delivery_dir / DEFAULT_PLAN_FILENAME
+        else default_delivery_plan_path(delivery_dir)
     )
+    if not args.output_plan_csv:
+        legacy_plan = legacy_delivery_plan_path(delivery_dir)
+        if legacy_plan.is_file() and legacy_plan.resolve() != output_path:
+            raise BitBrowserError(
+                f"Legacy publish plan already exists: {legacy_plan}. "
+                f"Open that plan, move it into {DEFAULT_WORK_DIRNAME}, or pass --output-plan-csv explicitly."
+            )
     video_platforms = parse_platform_list(args.plan_video_platforms, "--plan-video-platforms")
     image_platforms = parse_platform_list(args.plan_image_platforms, "--plan-image-platforms")
     if args.plan_repeat < 1:
@@ -2537,8 +2583,16 @@ def default_screenshot_path(platform: str, publish_id: str = "") -> Path:
     if publish_id:
         safe_publish_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", publish_id).strip("_")
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return Path("output") / "publish-rpa" / f"{safe_publish_id}-{platform}-{timestamp}.png"
+        return Path(DEFAULT_WORK_DIRNAME) / DEFAULT_SCREENSHOT_DIRNAME / f"{safe_publish_id}-{platform}-{timestamp}.png"
     return Path(DEFAULT_SCREENSHOT)
+
+
+def plan_work_screenshot_path(plan_dir: Path, platform: str, publish_id: str = "") -> Path:
+    if publish_id:
+        safe_publish_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", publish_id).strip("_")
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return plan_dir / DEFAULT_SCREENSHOT_DIRNAME / f"{safe_publish_id}-{platform}-{timestamp}.png"
+    return plan_dir / DEFAULT_SCREENSHOT_DIRNAME / Path(DEFAULT_SCREENSHOT).name
 
 
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
@@ -2774,11 +2828,19 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     if not media_path.exists():
         raise SystemExit(f"Media file does not exist: {media_path}")
 
-    screenshot_arg = args.screenshot or str(default_screenshot_path(args.platform, args.publish_id))
+    delivery_csv = resolve_delivery_csv(media_path, args.delivery_csv)
+    delivery_work_dir = default_delivery_work_dir(delivery_csv.parent) if delivery_csv is not None else None
+    if args.screenshot and args.screenshot != DEFAULT_SCREENSHOT:
+        screenshot_arg = args.screenshot
+    elif getattr(args, "plan_dir", None):
+        screenshot_arg = str(plan_work_screenshot_path(Path(args.plan_dir).expanduser().resolve(), args.platform, args.publish_id))
+    elif delivery_work_dir is not None:
+        screenshot_arg = str(plan_work_screenshot_path(delivery_work_dir, args.platform, args.publish_id))
+    else:
+        screenshot_arg = str(default_screenshot_path(args.platform, args.publish_id))
     screenshot_path = Path(screenshot_arg).expanduser().resolve()
     screenshot_path.parent.mkdir(parents=True, exist_ok=True)
 
-    delivery_csv = resolve_delivery_csv(media_path, args.delivery_csv)
     delivery_record: DeliveryRecord | None = None
     if delivery_csv is not None:
         delivery_record = load_delivery_record(delivery_csv, media_path)
@@ -3223,7 +3285,7 @@ def run_plan(args: argparse.Namespace) -> int:
         if cleanup_profile_id and not task_args.profile_id:
             task_args.profile_id = cleanup_profile_id
         task_args.screenshot = (
-            str(default_screenshot_path(entry.platform, entry.publish_id))
+            str(plan_work_screenshot_path(plan_work_dir_for_plan(plan_path), entry.platform, entry.publish_id))
             if args.screenshot == DEFAULT_SCREENSHOT
             else args.screenshot
         )
@@ -3320,9 +3382,14 @@ def run(args: argparse.Namespace) -> int:
     if args.generate_plan:
         return generate_publish_plan(args)
     if args.summarize_log_jsonl:
-        summary_csv = Path(args.summary_csv).expanduser().resolve()
+        log_jsonl_path = Path(args.summarize_log_jsonl).expanduser().resolve()
+        summary_csv = (
+            log_jsonl_path.parent / Path(DEFAULT_SUMMARY_CSV).name
+            if args.summary_csv == DEFAULT_SUMMARY_CSV
+            else Path(args.summary_csv).expanduser().resolve()
+        )
         rows = write_summary_csv(
-            Path(args.summarize_log_jsonl).expanduser().resolve(),
+            log_jsonl_path,
             summary_csv,
             include_history=args.summary_include_history,
         )
@@ -3595,7 +3662,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-plan-csv",
-        help="Output path for --generate-plan. Defaults to publish_plan.csv in the delivery directory.",
+        help="Output path for --generate-plan. Defaults to rpa_work/publish_plan.csv in the delivery directory.",
     )
     parser.add_argument(
         "--overwrite-plan",

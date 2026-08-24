@@ -13,11 +13,13 @@
 播放、互动、询盘、成交和爆款洞察先作为待补指标占位，不由当前 RPA 专项负责采集。当前直接数据源是：
 
 ```text
-customer_report_seed.csv
-customer_report_overview.csv
-publish_summary.csv
-publish_plan.csv
+rpa_work/customer_report_seed.csv
+rpa_work/customer_report_overview.csv
+rpa_work/publish_summary.csv
+rpa_work/publish_plan.csv
 ```
+
+这些文件默认都在每个投放包自己的 `rpa_work/` 目录内，方便一批投放的计划、执行记录、截图和报告放在一起迁移。
 
 ## 页面结构
 
@@ -253,6 +255,6 @@ creative_id / video_id
 5. 待补指标：播放、互动、询盘、成交等先展示为空或待同步。
 6. 最近同步时间和数据来源。
 
-短期桥接数据源先用 `publish_summary.csv`，再叠加 `customer_report_seed.csv` 和 `customer_report_overview.csv` 作为报告网页和周报/月报的输入口径。
+短期桥接数据源先用 `rpa_work/publish_summary.csv`，再叠加 `rpa_work/customer_report_seed.csv` 和 `rpa_work/customer_report_overview.csv` 作为报告网页和周报/月报的输入口径。
 
 后续再由其他专项接入询盘中心、客户权限系统、爆款基因图、成本、收入和 ROI。

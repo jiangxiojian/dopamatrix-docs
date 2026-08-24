@@ -17,7 +17,17 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from bitbrowser_rpa_example import DEFAULT_BIT_API, DEFAULT_DELIVERY_CSV_FILENAME, DEFAULT_ACCOUNT_LEDGER_FILENAME
+from bitbrowser_rpa_example import (
+    DEFAULT_ACCOUNT_LEDGER_FILENAME,
+    DEFAULT_BIT_API,
+    DEFAULT_DELIVERY_CSV_FILENAME,
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    default_delivery_plan_path,
+    default_delivery_work_dir,
+    existing_delivery_plan_path,
+    scan_media_files,
+)
 from bitbrowser_rpa_example import main as publisher_main
 from rpa_workbench_server import build_config, run_server
 
@@ -42,6 +52,7 @@ class PublisherLauncher(tk.Tk):
         self.product_id = tk.StringVar()
         self.operator = tk.StringVar()
         self.status = tk.StringVar(value="请选择一个投放包文件夹。")
+        self.package_check = tk.StringVar(value="投放包检查：尚未选择文件夹。")
         self.server_started = False
         self.server_url = ""
         self.server_plan_csv: Path | None = None
@@ -68,7 +79,10 @@ class PublisherLauncher(tk.Tk):
         help_frame.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 10))
         help_frame.columnconfigure(0, weight=1)
         help_texts = [
-            "投放包文件夹：选择本次交付包，例如 dopamatrix_delivery_1781700321(1)。里面要有文案表、账号台账和素材。",
+            "投放包文件夹：选择 dopamatrix_delivery_xxx 这一层，例如 dopamatrix_delivery_1781700321(1)。不要选择 videos、images 或单个素材文件。",
+            "标准目录：视频放 videos 文件夹，图片放 images 文件夹；文案表和账号台账放在投放包根目录。",
+            "脚本产物：发布计划、日志、汇总和报告默认放到 rpa_work 文件夹，避免把投放包根目录堆乱。",
+            "素材文件名：矩阵投放文案对照表.csv 里的素材文件名要能在 videos 或 images 里找到。",
             "客户 ID：可选。用来把发布任务、帖子链接、询盘和报告归到同一个客户；正式发布建议按团队客户台账填写，例如 CUST_A。",
             "产品 ID：可选。用来区分同一客户下的不同产品、活动或投放批次；正式发布建议按产品/项目编号填写，例如 TOILET_001。",
             "测试时不填也能运行；随便填也能运行，但后续报告和回查会按你填的值统计。",
@@ -109,7 +123,9 @@ class PublisherLauncher(tk.Tk):
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        ttk.Label(scrollable, text="投放包文件夹").grid(row=0, column=0, sticky="w", pady=8)
+        ttk.Label(scrollable, text="投放包文件夹（选 dopamatrix_delivery_xxx 这一层）").grid(
+            row=0, column=0, sticky="w", pady=8
+        )
         ttk.Entry(scrollable, textvariable=self.delivery_dir).grid(row=0, column=1, sticky="ew", padx=10, pady=8)
         ttk.Button(scrollable, text="选择文件夹", command=self.choose_delivery_dir).grid(row=0, column=2, pady=8)
 
@@ -136,7 +152,7 @@ class PublisherLauncher(tk.Tk):
             text=(
                 "1. 比特浏览器已启动，Local API 已开启\n"
                 "2. TK / FB 账号已在对应环境登录，代理已确认\n"
-                "3. 投放包内有矩阵投放文案对照表.csv、账号环境台账.csv 和素材\n"
+                "3. 投放包根目录有文案表和账号台账；视频在 videos，图片在 images\n"
                 "4. 脚本只准备草稿，不会点击 TK/FB 的最终发布按钮"
             ),
             justify="left",
@@ -144,6 +160,9 @@ class PublisherLauncher(tk.Tk):
 
         ttk.Label(scrollable, textvariable=self.status, foreground="#185abc", wraplength=820).grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(12, 8)
+        )
+        ttk.Label(scrollable, textvariable=self.package_check, foreground="#344054", wraplength=820, justify="left").grid(
+            row=6, column=0, columnspan=3, sticky="w", pady=(0, 8)
         )
 
         footer = ttk.Frame(self, padding=(22, 8, 22, 20))
@@ -156,26 +175,102 @@ class PublisherLauncher(tk.Tk):
         selected = filedialog.askdirectory(title="选择 DopaMatrix 投放包文件夹")
         if selected:
             self.delivery_dir.set(selected)
-            self.status.set("已选择投放包，请确认文件后启动操作台。")
+            self.refresh_package_check()
 
     def package_paths(self) -> tuple[Path, Path, Path]:
         root = Path(self.delivery_dir.get().strip()).expanduser().resolve()
         return root, root / DEFAULT_DELIVERY_CSV_FILENAME, root / DEFAULT_ACCOUNT_LEDGER_FILENAME
 
+    @staticmethod
+    def selected_media_subdir(root: Path) -> str:
+        name = root.name.lower()
+        if name in {"videos", "images"}:
+            return name
+        return ""
+
     def validate_package(self, require_inputs: bool = True) -> tuple[Path, Path, Path]:
         root, delivery_csv, ledger_csv = self.package_paths()
         if not root.is_dir():
             raise ValueError("投放包文件夹不存在。")
+        selected_subdir = self.selected_media_subdir(root)
+        if selected_subdir:
+            raise ValueError(f"当前选到了 {selected_subdir} 素材文件夹，请选择上一层 dopamatrix_delivery_xxx 投放包。")
         if require_inputs and not delivery_csv.is_file():
             raise ValueError(f"缺少 {DEFAULT_DELIVERY_CSV_FILENAME}。")
         if require_inputs and not ledger_csv.is_file():
             raise ValueError(f"缺少 {DEFAULT_ACCOUNT_LEDGER_FILENAME}。")
         return root, delivery_csv, ledger_csv
 
+    def refresh_package_check(self) -> None:
+        try:
+            root, delivery_csv, ledger_csv = self.package_paths()
+            if not root.is_dir():
+                self.status.set("请选择投放包文件夹。")
+                self.package_check.set("投放包检查：文件夹不存在。")
+                return
+            selected_subdir = self.selected_media_subdir(root)
+            if selected_subdir:
+                parent = root.parent
+                self.status.set(f"当前选到了 {selected_subdir} 素材文件夹，请选择上一层投放包。")
+                self.package_check.set(
+                    "投放包检查：\n"
+                    f"!!  请选择上一层文件夹：{parent}\n"
+                    "OK  videos 用来放视频素材\n"
+                    "OK  images 用来放图片素材"
+                )
+                return
+            videos_dir = root / "videos"
+            images_dir = root / "images"
+            work_dir = default_delivery_work_dir(root)
+            video_count = len(scan_media_files(videos_dir, VIDEO_EXTENSIONS)) if videos_dir.is_dir() else 0
+            image_count = len(scan_media_files(images_dir, IMAGE_EXTENSIONS)) if images_dir.is_dir() else 0
+            total_media_count = len(scan_media_files(root, VIDEO_EXTENSIONS | IMAGE_EXTENSIONS))
+            plan_csv = existing_delivery_plan_path(root)
+            default_plan_csv = default_delivery_plan_path(root)
+            lines = [
+                "投放包检查：",
+                self.check_line(delivery_csv.is_file(), f"找到 {DEFAULT_DELIVERY_CSV_FILENAME}", f"缺少 {DEFAULT_DELIVERY_CSV_FILENAME}"),
+                self.check_line(ledger_csv.is_file(), f"找到 {DEFAULT_ACCOUNT_LEDGER_FILENAME}", f"缺少 {DEFAULT_ACCOUNT_LEDGER_FILENAME}"),
+                self.check_line(
+                    videos_dir.is_dir(),
+                    f"找到 videos 文件夹，视频 {video_count} 个；视频素材放这里",
+                    "没有 videos 文件夹；如果只发图片可以忽略",
+                ),
+                self.check_line(
+                    images_dir.is_dir(),
+                    f"找到 images 文件夹，图片 {image_count} 个；图片素材放这里",
+                    "没有 images 文件夹；如果只发视频可以忽略",
+                ),
+                self.check_line(total_media_count > 0, f"共找到素材 {total_media_count} 个", "没有找到视频或图片素材"),
+                self.check_line(
+                    work_dir.is_dir(),
+                    f"找到 rpa_work 工作目录：{work_dir}",
+                    "未找到 rpa_work 工作目录；点击生成按钮会自动创建",
+                ),
+                self.check_line(
+                    bool(plan_csv),
+                    f"找到已有计划表：{plan_csv}",
+                    f"未找到计划表，点击生成按钮会创建：{default_plan_csv}",
+                ),
+            ]
+            self.package_check.set("\n".join(lines))
+            if delivery_csv.is_file() and ledger_csv.is_file() and total_media_count > 0:
+                self.status.set("投放包检查通过，可以生成计划或打开已有计划。")
+            else:
+                self.status.set("投放包还缺必要文件，请按检查结果补齐。")
+        except Exception as exc:
+            self.status.set(f"投放包检查失败：{exc}")
+            self.package_check.set("投放包检查：失败。")
+
+    @staticmethod
+    def check_line(ok: bool, ok_text: str, bad_text: str) -> str:
+        return ("OK  " if ok else "!!  ") + (ok_text if ok else bad_text)
+
     def create_plan_if_needed(self, root: Path, delivery_csv: Path, ledger_csv: Path) -> Path:
-        plan_csv = root / "publish_plan.csv"
-        if plan_csv.is_file():
+        plan_csv = existing_delivery_plan_path(root)
+        if plan_csv:
             return plan_csv
+        plan_csv = default_delivery_plan_path(root)
         argv = [
             "--generate-plan",
             "--delivery-dir",
@@ -184,6 +279,8 @@ class PublisherLauncher(tk.Tk):
             str(delivery_csv),
             "--account-ledger",
             str(ledger_csv),
+            "--output-plan-csv",
+            str(plan_csv),
             "--plan-client-id",
             self.client_id.get().strip(),
             "--plan-product-id",
@@ -211,7 +308,7 @@ class PublisherLauncher(tk.Tk):
             customer_report_overview_csv="",
             customer_report_html="",
             account_health_csv="",
-            account_ledger=str(plan_csv.parent / DEFAULT_ACCOUNT_LEDGER_FILENAME),
+            account_ledger=str(self.find_account_ledger_for_plan(plan_csv)),
             bit_api=DEFAULT_BIT_API,
             operator=self.operator.get().strip(),
             host="127.0.0.1",
@@ -249,13 +346,21 @@ class PublisherLauncher(tk.Tk):
     def open_existing_plan(self) -> None:
         try:
             root, _, _ = self.validate_package(require_inputs=False)
-            plan_csv = root / "publish_plan.csv"
-            if not plan_csv.is_file():
-                raise ValueError("当前文件夹没有 publish_plan.csv，请先生成发布计划。")
+            plan_csv = existing_delivery_plan_path(root)
+            if not plan_csv:
+                raise ValueError("当前投放包没有计划表，请先生成发布计划。")
             self.start_workbench_for_plan(plan_csv)
         except Exception as exc:
             self.status.set(f"打开失败：{exc}")
             messagebox.showerror(APP_TITLE, str(exc))
+
+    @staticmethod
+    def find_account_ledger_for_plan(plan_csv: Path) -> Path:
+        for parent in [plan_csv.parent, *plan_csv.parents]:
+            candidate = parent / DEFAULT_ACCOUNT_LEDGER_FILENAME
+            if candidate.is_file():
+                return candidate
+        return plan_csv.parent / DEFAULT_ACCOUNT_LEDGER_FILENAME
 
 
 def main() -> int:

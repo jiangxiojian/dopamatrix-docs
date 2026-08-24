@@ -31,6 +31,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
     BitBrowserClient,
     DEFAULT_ACCOUNT_LEDGER_FILENAME,
     DEFAULT_BIT_API,
+    _discover_file_upwards,
     append_jsonl_log,
     connect_browser_context,
     describe_error_action,
@@ -1162,7 +1163,8 @@ def build_config(args: argparse.Namespace) -> WorkbenchConfig:
     account_ledger_csv = (
         Path(args.account_ledger).expanduser().resolve()
         if args.account_ledger
-        else plan_csv.parent / DEFAULT_ACCOUNT_LEDGER_FILENAME
+        else _discover_file_upwards(plan_csv.parent, (DEFAULT_ACCOUNT_LEDGER_FILENAME,))
+        or plan_csv.parent / DEFAULT_ACCOUNT_LEDGER_FILENAME
     )
     return WorkbenchConfig(
         plan_csv=plan_csv,

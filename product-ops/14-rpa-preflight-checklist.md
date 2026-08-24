@@ -19,10 +19,10 @@
 | 代理已配置 | 是 | 环境要绑定可用代理。 | 账号台账里记录代理地区和供应商 |
 | `账号环境台账.csv` | 是 | 记录账号键、窗口 ID 和默认处理方式。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
 | `矩阵投放文案对照表.csv` | 是 | 一次投放的文案、标签和追踪短链对照表。 | 本文模板 |
-| 素材目录 | 是 | 存放视频、图片和必要的封面。 | 见下方目录结构 |
-| `publish_plan.csv` | 否 | 可以手工准备，也可以让脚本自动生成。 | [11-publish-data-schema.md](./11-publish-data-schema.md) |
+| 素材目录 | 是 | 视频放 `videos/`，图片放 `images/`；两个目录和文案表、台账放在同一个投放包下。 | 见下方目录结构 |
+| `rpa_work/publish_plan.csv` | 否 | 可以手工准备，也可以让脚本自动生成；默认放在 `rpa_work/`，不要和输入文件混在根目录。 | [11-publish-data-schema.md](./11-publish-data-schema.md) |
 | Facebook 入口 URL | 视情况 | FB 视频/Reels/快拍建议手工确认入口再填。 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) |
-| 输出目录 | 是 | 用来放日志、汇总、截图和报告。 | 例如 `E:\project\dopaMatrix\output\publish-rpa\` |
+| `rpa_work/` | 自动 | 用来放计划表、日志、汇总、客户报告和账号健康记录。 | 启动器会自动创建 |
 | 操作人名称 | 建议 | 写入工作台、日志和回填记录。 | `--operator` / `--manual-operator` |
 | 测试说明 | 建议 | 哪条任务是测试、哪条是正式跑批。 | `note` / `manual_note` |
 
@@ -31,18 +31,35 @@
 ```text
 delivery-package/
   videos/
+    demo_video_001.mp4
   images/
+    demo_image_001.jpg
   矩阵投放文案对照表.csv
   账号环境台账.csv
-  publish_plan.csv
-  publish_logs.jsonl
+  rpa_work/
+    publish_plan.csv
+    publish_logs.jsonl
+    publish_summary.csv
+    customer_report_seed.csv
+    customer_report_overview.csv
+    customer_report.html
+    rpa_account_health.csv
 ```
+
+启动器选择文件夹时，要选 `delivery-package` / `dopamatrix_delivery_xxx` 这一层。
+不要选 `videos/`、`images/`，也不要选单个素材文件。
 
 真实投放包例子：
 
 ```text
 E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
 ```
+
+图片素材放 `images/`，视频素材放 `videos/`。
+脚本会递归扫描投放包里的素材，但运营交接时按这两个固定目录整理，后续查找、复盘和补素材最清楚。
+
+根目录只放人工输入和素材目录；脚本产物统一进 `rpa_work/`。
+旧测试包如果已经把 `publish_plan.csv`、`publish_logs.jsonl`、报告 CSV/HTML 放在根目录，脚本仍然能兼容打开，但新包按 `rpa_work/` 整理。
 
 ## 客户 ID 和产品 ID 怎么填
 
@@ -93,7 +110,7 @@ Tk01_CoreTag_极度渴望_32f22a.mp4,极度渴望核心款,本条仅用于内部
 Fb01_CoreTag_极度渴望_9ac11d.jpg,极度渴望图文测试,本条仅用于内部测试，请勿公开发布,#DopaMatrix #Test,https://trk.example/fb-001
 ```
 
-## `publish_plan.csv` 模板
+## `rpa_work/publish_plan.csv` 模板
 
 如果你不想手工拼计划表，可以直接看这份结构草案：
 
@@ -117,8 +134,8 @@ Fb01_CoreTag_极度渴望_9ac11d.jpg,极度渴望图文测试,本条仅用于内
 2. `media_path` 是否真能找到文件。
 3. `tracking_url` 是否要保留。
 4. Facebook 视频/Reels 的入口 URL 是否已人工确认。
-5. 计划表里的 `status` 是否是 `READY`。
-6. 输出目录是否有写权限。
+5. `rpa_work/publish_plan.csv` 里的 `status` 是否是 `READY`。
+6. `rpa_work/` 是否有写权限。
 7. 这一批是否只准备做草稿，不点最终发布。
 
 ## 哪些东西可以晚点补

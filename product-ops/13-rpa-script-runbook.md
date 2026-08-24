@@ -1,6 +1,6 @@
 # RPA 脚本操作手册
 
-> 更新时间：2026-08-21  
+> 更新时间：2026-08-24
 > 文档类型：使用说明  
 > 状态：实施中
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
@@ -11,7 +11,7 @@
 
 能做的事：
 
-- 生成 `publish_plan.csv`
+- 生成 `rpa_work/publish_plan.csv`
 - 连接 BitBrowser 环境，打开 TK / FB 草稿页
 - 上传媒体、填写文案、截图、记录日志
 - 停在人工确认点，不点最终发布按钮
@@ -40,7 +40,7 @@
 ## 推荐使用顺序
 
 1. 先准备好素材、账号台账和交付 CSV。
-2. 让脚本生成 `publish_plan.csv`。
+2. 让脚本生成 `rpa_work/publish_plan.csv`。
 3. 用 `--print-plan` 先预览一条。
 4. 用 `--limit 1` 跑单条草稿。
 5. 确认无误后再跑批量。
@@ -81,13 +81,13 @@ python .\scripts\publishing\bitbrowser_rpa_example.py `
   --plan-product-id SHOCK-ABSORBER-001
 ```
 
-适合第一次把交付包转成 `publish_plan.csv`。
+适合第一次把交付包转成 `rpa_work/publish_plan.csv`。
 
 ### 先预览，不打开浏览器
 
 ```powershell
 python .\scripts\publishing\bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --print-plan `
   --limit 1
 ```
@@ -98,9 +98,9 @@ python .\scripts\publishing\bitbrowser_rpa_example.py `
 
 ```powershell
 python .\scripts\publishing\bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --only-publish-id PUB-FB-TEST-001 `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
   --write-plan-status
 ```
 
@@ -110,7 +110,7 @@ python .\scripts\publishing\bitbrowser_rpa_example.py `
 
 ```powershell
 python .\scripts\publishing\bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --backfill-publish-id PUB-FB-TEST-001 `
   --detect-post-url
 ```
@@ -121,27 +121,27 @@ python .\scripts\publishing\bitbrowser_rpa_example.py `
 
 ```powershell
 python .\scripts\publishing\bitbrowser_rpa_example.py `
-  --summarize-log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv"
+  --summarize-log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv"
 ```
 
 ### 生成静态操作台
 
 ```powershell
 python .\scripts\publishing\rpa_operator_console.py `
-  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\publish_plan.csv" `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv" `
-  --output-html "E:\project\dopaMatrix\output\publish-rpa\rpa_operator_console.html"
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv" `
+  --output-html "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\rpa_operator_console.html"
 ```
 
 ### 启动确认工作台
 
 ```powershell
 python .\scripts\publishing\rpa_workbench_server.py `
-  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\publish_plan.csv" `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv" `
   --operator "operator-name" `
   --open-browser
 ```
@@ -152,7 +152,7 @@ python .\scripts\publishing\rpa_workbench_server.py `
 python .\scripts\publishing\dopa_matrix_publisher.py
 ```
 
-图形入口会选择投放包、自动生成 `publish_plan.csv`，并打开确认工作台。工作台中的“准备选中草稿”会调用已有发布器，默认新开任务 Tab、使用 Facebook `auto` 上传策略、写日志和回写状态，仍停在最终发布按钮前。
+图形入口会选择投放包、自动生成 `rpa_work/publish_plan.csv`，并打开确认工作台。工作台中的“准备选中草稿”会调用已有发布器，默认新开任务 Tab、使用 Facebook `auto` 上传策略、写日志和回写状态，仍停在最终发布按钮前。
 
 ### 跑本地回归
 
@@ -164,7 +164,7 @@ python .\scripts\publishing\rpa_selftest.py
 
 | 参数 | 用法 |
 | --- | --- |
-| `--generate-plan` | 从投放包生成 `publish_plan.csv`。 |
+| `--generate-plan` | 从投放包生成 `rpa_work/publish_plan.csv`。 |
 | `--print-plan` | 只预览，不打开浏览器。 |
 | `--limit 1` | 只跑一条，适合先验收流程。 |
 | `--only-publish-id` | 只跑指定任务。 |
@@ -178,13 +178,18 @@ python .\scripts\publishing\rpa_selftest.py
 
 ## 产出文件
 
-- `publish_plan.csv`：运营计划表
-- `publish_logs.jsonl`：执行日志
-- `publish_summary.csv`：运营汇总
-- `rpa_operator_console.html`：静态检查页
-- `customer_report_seed.csv`：客户报告明细种子
-- `customer_report_overview.csv`：客户报告概览种子
-- `customer_report.html`：客户报告网页
+这些文件默认都在投放包的 `rpa_work/` 里：
+
+- `rpa_work/publish_plan.csv`：运营计划表
+- `rpa_work/publish_logs.jsonl`：执行日志
+- `rpa_work/publish_summary.csv`：运营汇总
+- `rpa_work/screenshots/`：草稿截图
+- `rpa_work/rpa_operator_console.html`：静态检查页
+- `rpa_work/customer_report_seed.csv`：客户报告明细种子
+- `rpa_work/customer_report_overview.csv`：客户报告概览种子
+- `rpa_work/customer_report.html`：客户报告网页
+
+旧测试包如果已经把这些文件放在投放包根目录，脚本仍然可以打开；新包统一按 `rpa_work/` 整理。
 
 ## 常见问题
 
@@ -201,6 +206,6 @@ python .\scripts\publishing\rpa_selftest.py
 
 1. 先把“能稳定准备草稿”当成目标，不要先追求无人值守。
 2. 每次真实跑批前，最好先跑 `--print-plan`。
-3. `publish_plan.csv` 是任务源，`publish_logs.jsonl` 是结果源，报告只是视图。
+3. `rpa_work/publish_plan.csv` 是任务源，`rpa_work/publish_logs.jsonl` 是结果源，报告只是视图。
 4. FB 视频/Reels 只有在入口 URL 已经人工确认时才建议启用。
 5. 当前图形入口已完成源码级和离线自测；`exe` 需要在目标 Windows 机器上完成一次打包和实机验证后再交给普通运营。

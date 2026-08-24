@@ -1,8 +1,19 @@
 # 文档变更日志
 
-> 更新时间：2026-08-21
+> 更新时间：2026-08-24
 > 文档类型：变更日志  
 > 状态：草案
+
+## 2026-08-24
+
+### Changed
+
+- `DopaMatrixPublisher.exe` 启动器补充投放包检查：选择文件夹后会提示文案表、账号台账、`videos/`、`images/`、素材数量和已有 `publish_plan.csv` 是否存在。
+- 普通运营说明和发布前准备清单明确投放包选择口径：选择 `dopamatrix_delivery_xxx` 这一层，不选择 `videos/`、`images/` 或单个素材文件。
+- 素材目录规范固定为视频放 `videos/`，图片放 `images/`，文案表里的素材文件名需要能在这两个目录中找到。
+- 新投放包默认把脚本产物集中到 `rpa_work/`：`publish_plan.csv`、`publish_logs.jsonl`、`publish_summary.csv`、客户报告 CSV/HTML 和账号健康记录不再散落在投放包根目录。
+- 计划生成器会忽略 `rpa_work/` 里的素材类文件，并把计划表素材路径写成相对路径，例如 `../videos/demo.mp4`、`../images/demo.jpg`，方便整个投放包迁移。
+- 启动器和确认工作台兼容旧测试包根目录里的 `publish_plan.csv`，但新包会优先使用 `rpa_work/publish_plan.csv`。
 
 ## 2026-08-21
 
@@ -65,7 +76,7 @@
 
 - 2026-08-19 实机发布并回收 TikTok 公开视频：`PUB-TK-TEST-001` 从 `tiktokstudio/content` 页面识别并回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`，随后页面状态变为 `Public`。
 - 2026-08-19 实机发布并回收 Facebook Page 视频/Reels：`PUB-FB-20260814-002-63893D` 从 Business Suite 内容日历识别并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838`。
-- 2026-08-19 生成单条 Facebook 图片帖计划 `PUB-FB-20260819-001-402E5C`，读取同窗口账号 `fb_test_sg_001`，新开任务 Tab 上传图片、填入文案和短链，46.84 秒完成并回写 `PREPARED`；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-FB-20260819-001-402E5C-facebook-20260819-160426.png`。
+- 2026-08-19 生成单条 Facebook 图片帖计划 `PUB-FB-20260819-001-402E5C`，读取同窗口账号 `fb_test_sg_001`，新开任务 Tab 上传图片、填入文案和短链，46.84 秒完成并回写 `PREPARED`；截图当时写入历史临时输出目录，新包统一写入 `rpa_work/screenshots/`。
 - 人工发布 `PUB-FB-20260819-001-402E5C` 后，脚本从 Facebook Business Suite 内容日历按最近发布时间候选回收并回填正确公开帖子：`https://www.facebook.com/1237975296070200/posts/122106554229435838`。
 - URL 识别自测已通过 3 组规则：TikTok 公开视频/Studio 查询参数、Facebook 公开帖/Business Suite `content_id`、FB 内容日历最近发布时间候选排序。
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 跑 `--detect-post-url` 真机扫描，当前只看到 `console.bitbrowser.net`、Facebook composer 和 TikTok upload 三个页签，未识别到公开帖子 URL；脚本能干净返回 `POST_URL_NOT_FOUND`。
@@ -91,7 +102,7 @@
 
 ### Verified
 
-- 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test` 测试投放包启动本地确认工作台，验证 `/api/tasks` 可读取任务，`/api/export-summary` 可导出 6 行汇总 CSV。
+- 使用历史批量彩排测试包启动本地确认工作台，验证 `/api/tasks` 可读取任务，`/api/export-summary` 可导出 6 行汇总 CSV。
 - 使用 `--task-timeout-seconds 1 --debug-task-sleep-seconds 3` 模拟慢任务，验证批量计划模式会强杀超时子进程并继续收尾，且不会被带 emoji 文案触发的 GBK 编码问题卡住。
 - 使用本地样本 URL 解析脚本，验证 TikTok `@user/video/<id>`、Facebook `posts/reel/permalink` 场景都能抽取 `platform_post_id`，并能过滤掉 `business.facebook.com/latest/composer` 这类非帖子页。
 
@@ -128,15 +139,15 @@
 
 ### Verified
 
-- 使用真实投放包生成 `E:\project\dopaMatrix\output\publish-rpa\generated-plan-test.csv`，当前包内只有视频素材，因此生成 1 条 TikTok READY 任务。
+- 使用真实投放包生成临时测试计划表，当前包内只有视频素材，因此生成 1 条 TikTok READY 任务。
 - 对生成的计划表执行 `--print-plan --limit 1`，确认可正确解析素材路径、账号台账、caption、追踪短链和归因 token。
 - 验证已有 `publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行结果和人工回填状态。
 - 使用临时投放包验证 `--one-click --print-plan`：没有现成计划表时可先自动生成 `publish_plan.csv`，再进入计划预览；测试任务已回填为 `REJECTED_MANUAL`，避免后续误跑。
 - 验证没有 READY 且已有计划表时，一键模式会停止并提示运营把待跑行改为 `READY` 或显式重新生成计划表。
-- 使用 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv` 完成 3 条 TikTok + 3 条 Facebook 同窗口顺序彩排：代理开启后 6 条均 `uploaded=true`、`caption_filled=true`、`PREPARED`，脚本未点击最终发布。
-- 首次批量彩排因代理未开启产生 6 条失败记录；开启代理后用 `--include-status FAILED,READY,PARTIAL` 成功重试，并导出 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv`。
+- 使用历史批量彩排计划表完成 3 条 TikTok + 3 条 Facebook 同窗口顺序彩排：代理开启后 6 条均 `uploaded=true`、`caption_filled=true`、`PREPARED`，脚本未点击最终发布。
+- 首次批量彩排因代理未开启产生 6 条失败记录；开启代理后用 `--include-status FAILED,READY,PARTIAL` 成功重试，并导出汇总 CSV。
 - 按“不发布”决定将 6 条批量彩排草稿统一人工回填为 `REJECTED_MANUAL`，避免误认为仍需人工发布。
-- 使用批量彩排目录生成 `E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html`，确认页面包含 6 条任务、`REJECTED_MANUAL` 状态筛选、截图 file 链接和 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令；同时验证缺少汇总 CSV 时可用 JSONL 兜底生成。
+- 使用批量彩排目录生成操作台 HTML，确认页面包含 6 条任务、`REJECTED_MANUAL` 状态筛选、截图 file 链接和 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令；同时验证缺少汇总 CSV 时可用 JSONL 兜底生成。
 - 静态验证平台注册表和错误分类：`tiktok` 可调度到 `TikTokPublisher`，`facebook` 可调度到 `FacebookPublisher`，部分成功结果可返回平台级错误码；用 FB `--print-plan` 确认计划表解析仍正常，不打开浏览器、不发布。
 - 重新生成批量彩排操作台 HTML，确认 6 条任务仍完整，页面包含搜索框、平台筛选、复制回填按钮、失败/部分成功重试命令和 JSONL 日志参数。
 - 用 `--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 生成 FB 视频计划，确认 `publish_plan.csv` 带出 `facebook_content_mode=reel` 和 `composer_url`；用 `--print-plan` 确认运行时计划会保留这些字段，不打开浏览器、不发布。
@@ -166,14 +177,14 @@
 ### Verified
 
 - 使用临时 `publish_plan_status_test.csv` 验证 `--print-plan` 安全预览、人工 `PUBLISHED_MANUAL` 回填、失败状态回写和 JSONL 追加。
-- 使用真实投放包 `publish_plan.csv` 验证 `PUB-TK-TEST-001`，脚本停在最终发布前，截图保存到 `E:\project\dopaMatrix\output\publish-rpa\PUB-TK-TEST-001-tiktok-20260813-162823.png`；该测试草稿不发布，已回填 `REJECTED_MANUAL`。
-- 使用真实 `publish_logs.jsonl` 导出 `E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv`，当前包含 TK/FB 两条最新任务，并补齐客户、产品、短链和归因字段。
+- 使用真实投放包 `publish_plan.csv` 验证 `PUB-TK-TEST-001`，脚本停在最终发布前，截图当时写入历史临时输出目录；该测试草稿不发布，已回填 `REJECTED_MANUAL`。
+- 使用真实 `publish_logs.jsonl` 导出汇总 CSV，当前包含 TK/FB 两条最新任务，并补齐客户、产品、短链和归因字段。
 - 使用临时 `publish_plan_error_test.csv` 和坏 API 地址验证异常分类，连接失败会写回 `BITBROWSER_CONNECTION`。
 - 使用目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 验证 Tab 隔离：关闭窗口后由脚本重新打开、窗口已打开后再次执行，均会保留原有 Tab 并新建任务 Tab。
-- 使用默认 `--tab-mode new` 验证 TikTok 冷启动完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png`；脚本未点击发布。
-- 使用默认 `--tab-mode new` 验证 Facebook 已打开窗口完整草稿准备，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png`；脚本未点击发布。
+- 使用默认 `--tab-mode new` 验证 TikTok 冷启动完整草稿准备，截图当时写入历史临时输出目录；脚本未点击发布。
+- 使用默认 `--tab-mode new` 验证 Facebook 已打开窗口完整草稿准备，截图当时写入历史临时输出目录；脚本未点击发布。
 - 验证 Facebook `input-only` 模式不会弹出原生文件管理器，但当前页面不暴露可直接设置的 file input，因此返回 `UPLOAD_NOT_CONFIRMED`。
-- 验证 Facebook `auto` 模式通过 Playwright 受控 file chooser 上传成功，截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-185116.png`；脚本未点击发布。
+- 验证 Facebook `auto` 模式通过 Playwright 受控 file chooser 上传成功，截图当时写入历史临时输出目录；脚本未点击发布。
 - 使用 `--clean-blank-tabs` 清理目标窗口 `82b4fd0926b9469f830c6c4e2dc4e589` 中测试产生的 1 个 `about:blank` Tab。
 - 多轮验证 Facebook 上传策略：`auto` 窗口已打开连续 3 次、冷启动 1 次、零上传参数 1 次均完成上传和文案填充；`file-chooser` 直连连续 3 次也成功，但默认采用兼容性更好的 `auto`。
 - 直接无参数运行脚本验证一键模式：自动发现临时 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，未点击最终发布。

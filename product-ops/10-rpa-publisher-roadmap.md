@@ -37,12 +37,12 @@
 | Facebook Page 图片帖准备 | 已验证批量计划模式 | 在 `Bright Auto Picks` Page 上验证：单条命令、`publish_plan.csv` 计划模式，以及 2026-08-14 三条重复图片彩排均可自动上传图片、填文案、截图，停在发布前。 |
 | 交付 CSV 读取 | 已实现基础版 | 按 `视频文件名` 匹配 `矩阵投放文案对照表.csv`。 |
 | 账号环境台账读取 | 已实现基础版 | 可按 `账号键`、平台或默认行读取窗口 ID。 |
-| `publish_plan.csv` 模板 | 已完成 | 已在投放包目录创建 TK 视频和 FB 图片两条 READY 样例。 |
-| `publish_plan.csv` 自动生成 | 已实现基础版 | `--generate-plan` 可从投放包、交付 CSV、账号台账和素材文件生成发布计划；默认视频生成 TK 任务、图片生成 FB 任务；支持 `--plan-repeat` 做内部重复任务彩排。 |
+| `publish_plan.csv` 模板 | 已完成 | 新版默认放在投放包的 `rpa_work/publish_plan.csv`，包含 TK 视频和 FB 图片 READY 任务。 |
+| `publish_plan.csv` 自动生成 | 已实现基础版 | `--generate-plan` 可从投放包、交付 CSV、账号台账和素材文件生成 `rpa_work/publish_plan.csv`；默认视频生成 TK 任务、图片生成 FB 任务；支持 `--plan-repeat` 做内部重复任务彩排。 |
 | 发布计划预览 | 已实现基础版 | 支持 `--plan-csv --limit --print-plan`，可不打开浏览器检查任务解析结果。 |
 | 批量队列读取 | 已验证基础版 | 支持读取 READY/FAILED/PARTIAL 行，并用 `--limit`、`--only-publish-id`、`--only-platform` 限制执行范围；2026-08-14 已跑通 6 条 TK/FB 顺序彩排。 |
 | JSONL 汇总日志 | 已实现基础版 | 支持 `--log-jsonl` 追加 `PLANNED/PREPARED/FAILED` 记录；真实执行会记录 `duration_seconds`。 |
-| 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链、归因字段和执行耗时。 |
+| 发布汇总 CSV | 已实现基础版 | 支持 `--summarize-log-jsonl` 导出 `rpa_work/publish_summary.csv`，默认每个 `publish_id` 保留最新状态，并从 `plan_csv` 补齐客户、产品、短链、归因字段和执行耗时。 |
 | 客户报告种子导出 | 已实现基础版 | 可把 `publish_summary.csv` 再导出为 `customer_report_seed.csv` 和 `customer_report_overview.csv`，作为后续客户报告网页和周报/月报的桥接数据。 |
 | 客户报告网页 V1 | 已实现基础版 | 新增 `rpa_customer_report_page.py`，可生成本地静态 HTML，展示发布概览、筛选、内容明细、帖子链接、状态分布和待补指标；确认工作台也可一键生成。 |
 | 计划表状态回写 | 已实现基础版 | 显式传 `--write-plan-status` 后，可把 `PREPARED/PARTIAL/FAILED`、截图和错误信息写回 `publish_plan.csv`。 |
@@ -96,7 +96,7 @@
 | P0-7 | 支持同一窗口跨平台顺序执行 | Tab 隔离已通过实机验证；单任务硬超时隔离也已补上，后续继续做连续计划执行里的更大样本和并发调度。 |
 | P0-8 | 完成 TK/FB 各 3 条样本彩排 | 已完成基础版。2026-08-14 使用同一视频重复 3 条 TK、同一图片重复 3 条 FB，代理开启后 6 条均 `PREPARED`，有截图、JSONL 和汇总 CSV。 |
 | P0-9 | 一键运行模式 | 已完成基础版。直接运行脚本即可自动发现 READY 计划；安全条件满足时可先生成计划，再准备草稿、写日志和状态，停在人工确认点。 |
-| P0-10 | 从投放包生成 `publish_plan.csv` | 已实现基础版。读取 `矩阵投放文案对照表.csv`、素材目录和账号台账，自动生成 READY 任务；默认不覆盖已有计划表，一键模式可复用该生成器。 |
+| P0-10 | 从投放包生成 `publish_plan.csv` | 已实现基础版。读取 `矩阵投放文案对照表.csv`、素材目录和账号台账，自动生成 `rpa_work/publish_plan.csv` READY 任务；默认不覆盖已有计划表，一键模式可复用该生成器。 |
 
 ### P1：提高稳定性和可运营性
 
@@ -153,7 +153,7 @@ E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\账号环境台账.csv
 建议新增：
 
 ```text
-publish_plan.csv
+rpa_work/publish_plan.csv
 ```
 
 推荐字段：
@@ -162,7 +162,7 @@ publish_plan.csv
 publish_id,client_id,product_id,platform,content_type,facebook_content_mode,composer_url,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note,last_result_status,last_result_at,result_screenshot,error_type,error_message,post_url,published_at,manual_operator,manual_checked_at,manual_note
 ```
 
-其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从账号台账查；只有临时测试才直接填窗口 ID。`media_path` 的相对路径按 `publish_plan.csv` 所在目录解析，所以计划表应保存在投放包目录内。`facebook_content_mode` 和 `composer_url` 只用于 Facebook 任务，特别是视频/Reels/快拍入口；普通 FB 图片帖可以留空。
+其中 `browser_profile_id` 可以为空，脚本优先用 `account_key` 从投放包根目录的账号台账查；只有临时测试才直接填窗口 ID。`media_path` 的相对路径按 `publish_plan.csv` 所在目录解析，所以新版计划表保存在投放包的 `rpa_work/` 内，素材路径通常是 `../videos/xxx.mp4` 或 `../images/xxx.jpg`。`facebook_content_mode` 和 `composer_url` 只用于 Facebook 任务，特别是视频/Reels/快拍入口；普通 FB 图片帖可以留空。
 
 当前脚本已支持自动生成：
 
@@ -174,14 +174,14 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --plan-product-id SHOCK-ABSORBER-001
 ```
 
-基础规则是视频生成 TikTok 任务、图片生成 Facebook 任务，并按平台从账号台账选择可用账号。已有 `publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行状态；需要覆盖时才加 `--overwrite-plan`。
+基础规则是视频生成 TikTok 任务、图片生成 Facebook 任务，并按平台从账号台账选择可用账号。已有 `rpa_work/publish_plan.csv` 时默认拒绝覆盖，避免冲掉执行状态；需要覆盖时才加 `--overwrite-plan`。
 
 ### 发布日志
 
 建议新增：
 
 ```text
-publish_logs.jsonl
+rpa_work/publish_logs.jsonl
 ```
 
 每行一条执行记录，至少包含：
@@ -206,12 +206,12 @@ publish_logs.jsonl
 }
 ```
 
-状态回写和人工回填目前都写 `publish_plan.csv`，并可同时追加 JSONL；后续做看板时，优先从 JSONL 建汇总，再反向检查计划表是否漏回填。
+状态回写和人工回填目前都写 `rpa_work/publish_plan.csv`，并可同时追加 JSONL；后续做看板时，优先从 JSONL 建汇总，再反向检查计划表是否漏回填。
 
 当前脚本已经支持把 JSONL 导出为：
 
 ```text
-E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv
+rpa_work/publish_summary.csv
 ```
 
 这个 CSV 是报告网页前的过渡产物，不替代后续数据库和看板。真实执行记录会带 `duration_seconds`，后续可用来识别慢上传、平台等待超时和账号验证造成的阻塞。

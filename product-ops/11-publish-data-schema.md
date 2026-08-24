@@ -10,11 +10,11 @@
 
 当前脚本里已经在用的现实形态是：
 
-- `publish_plan.csv` 作为运营计划表
-- `publish_logs.jsonl` 作为执行事件日志
-- `publish_summary.csv` 作为汇总视图
+- `rpa_work/publish_plan.csv` 作为运营计划表
+- `rpa_work/publish_logs.jsonl` 作为执行事件日志
+- `rpa_work/publish_summary.csv` 作为汇总视图
 
-未来上数据库时，建议保持同样的语义。
+`rpa_work/` 是当前 CSV/JSONL 文件的物理落点；未来上数据库时，建议保持同样的语义。
 
 ## `publish_plans`
 
@@ -132,7 +132,7 @@
 
 - `publish_plans` 是计划源表。
 - `publish_logs` 是追加事件表。
-- `publish_summary.csv` 是从日志和计划拼出来的运营视图，不建议当源表。
+- `rpa_work/publish_summary.csv` 是从日志和计划拼出来的运营视图，不建议当源表。
 
 ## 状态流
 

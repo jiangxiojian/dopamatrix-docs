@@ -19,11 +19,38 @@ DopaMatrix 发布操作台：普通运营快速说明
 
 E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
 
+选择文件夹时，要选中 dopamatrix_delivery_xxx 这一层。
+不要选 videos 文件夹、images 文件夹，也不要选单个视频或图片文件。
+
 最少要有：
 
 - 矩阵投放文案对照表.csv
 - 账号环境台账.csv
-- 视频或图片素材
+- videos 文件夹：放视频素材，例如 mp4、mov
+- images 文件夹：放图片素材，例如 jpg、png、webp
+- rpa_work 文件夹：脚本自动创建，用来放计划表、日志、汇总和报告
+
+如果这一批只发视频，可以没有 images。
+如果这一批只发图片，可以没有 videos。
+但至少要有一种素材。
+
+标准结构例子：
+
+E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
+  矩阵投放文案对照表.csv
+  账号环境台账.csv
+  videos
+    demo_video_001.mp4
+  images
+    demo_image_001.jpg
+  rpa_work
+    publish_plan.csv
+    publish_logs.jsonl
+    publish_summary.csv
+    customer_report.html
+
+矩阵投放文案对照表.csv 里的素材文件名，要能在 videos 或 images 里找到。
+普通运营主要看根目录的文案表、账号台账、videos、images；rpa_work 里的文件是脚本工作产物，不要随手改名或删除。
 
 建议你把它理解成“一次投放所需的全部原料”。
 
@@ -56,5 +83,6 @@ E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
 - 有没有选错投放包
 - `账号环境台账.csv` 里窗口 ID 和账号是否对应
 - 素材文件名能不能对上 `矩阵投放文案对照表.csv`
+- 操作台用的计划表是不是在 `rpa_work\publish_plan.csv`
 - 比特浏览器是否已登录、代理是否正常
 - 页面有没有验证码、人脸验证或文件选择器

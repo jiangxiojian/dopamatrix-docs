@@ -32,8 +32,8 @@ docs\scripts\publishing\run_publisher.cmd
 
 一键模式会自动：
 
-1. 优先找到项目中唯一包含 `READY` 任务的 `publish_plan.csv`。
-2. 如果没有 READY 计划，且只有一个安全的投放包没有计划表，则先自动生成 `publish_plan.csv`。
+1. 优先找到项目中唯一包含 `READY` 任务的 `rpa_work/publish_plan.csv`。
+2. 如果没有 READY 计划，且只有一个安全的投放包没有计划表，则先自动生成 `rpa_work/publish_plan.csv`。
 3. 读取账号环境台账，按 `account_key` 找到比特浏览器窗口。
 4. 自动打开或连接指纹环境。
 5. 每条任务新开独立 Tab。
@@ -45,7 +45,7 @@ docs\scripts\publishing\run_publisher.cmd
 
 ## 自动生成发布计划
 
-运营不需要手写 `publish_plan.csv`。准备好投放包后，可以先让脚本生成计划表：
+运营不需要手写 `publish_plan.csv`。准备好投放包后，可以先让脚本生成计划表，默认会放到投放包里的 `rpa_work/publish_plan.csv`：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
@@ -99,7 +99,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 默认输出到投放包里的：
 
 ```text
-publish_plan.csv
+rpa_work/publish_plan.csv
 ```
 
 如果文件已存在，脚本不会覆盖，避免把已经执行、回填或人工标记过的计划表冲掉。需要覆盖时必须显式加：
@@ -114,7 +114,7 @@ publish_plan.csv
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --generate-plan `
   --delivery-dir "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)" `
-  --output-plan-csv "E:\project\dopaMatrix\output\publish-rpa\generated-plan-test.csv" `
+  --output-plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\generated-plan-test.csv" `
   --overwrite-plan `
   --plan-client-id DMX `
   --plan-product-id SHOCK-ABSORBER-001
@@ -151,7 +151,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --profile-id "YOUR_TK_PROFILE_ID" `
   --media "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\videos\Tk01_CoreTag_极度渴望_32f22a.mp4" `
   --delivery-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\矩阵投放文案对照表.csv" `
-  --screenshot "E:\project\dopaMatrix\output\publish-rpa\tiktok-demo.png" `
+  --screenshot "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\screenshots\tiktok-demo.png" `
   --content-check-action pause `
   --pause
 ```
@@ -194,10 +194,10 @@ tk_ph_001,tiktok,82b4fd0926b9469f830c6c4e2dc4e589,12-TK-PH-001-工作台,pause,�
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --platform facebook `
   --profile-id "YOUR_FB_PROFILE_ID" `
-  --media "E:\project\dopaMatrix\output\fb-posts\demo.jpg" `
+  --media "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\images\fb-post-demo.jpg" `
   --caption "这款产品适合工程采购和家装升级，欢迎留言咨询。" `
-  --screenshot "E:\project\dopaMatrix\output\publish-rpa\facebook-demo.png" `
-  --log-json "E:\project\dopaMatrix\output\publish-rpa\facebook-demo.json" `
+  --screenshot "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\screenshots\facebook-demo.png" `
+  --log-json "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\facebook-demo.json" `
   --pause
 ```
 
@@ -212,7 +212,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --facebook-content-mode reel `
   --facebook-composer-url "PASTE_VERIFIED_FACEBOOK_ENTRY_URL_HERE" `
   --profile-id "YOUR_FB_PROFILE_ID" `
-  --media "E:\project\dopaMatrix\output\publish-rpa\sample-video.mp4" `
+  --media "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\videos\sample-video.mp4" `
   --caption "内部测试：仅准备 Facebook 视频/Reels 草稿，不发布。" `
   --pause
 ```
@@ -235,7 +235,7 @@ Facebook 上传有三种模式；普通运行不需要传这个参数，默认�
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --platform facebook `
   --account-key "fb_test_sg_001" `
-  --media "E:\project\dopaMatrix\output\publish-rpa\fb-upload-test-image-20260812.png" `
+  --media "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\images\fb-upload-test-image-20260812.png" `
   --account-ledger "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\账号环境台账.csv" `
   --caption "DopaMatrix内部测试：仅验证Facebook Page图片上传和文案填充流程，不发布。" `
   --print-plan
@@ -245,13 +245,13 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 ## 运行发布计划预览
 
-投放包目录现在可以放一份 `publish_plan.csv`，脚本支持按计划表读取任务。先用 `--print-plan --limit 1` 做安全预览，不会打开比特浏览器：
+投放包目录现在会在 `rpa_work/` 里放一份 `publish_plan.csv`，脚本支持按计划表读取任务。先用 `--print-plan --limit 1` 做安全预览，不会打开比特浏览器：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --limit 1 `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.preview.jsonl" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.preview.jsonl" `
   --print-plan
 ```
 
@@ -261,16 +261,16 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 publish_id,client_id,product_id,platform,content_type,facebook_content_mode,composer_url,account_key,browser_profile_id,media_path,title,caption,hashtags,tracking_url,attribution_token,scheduled_at,status,operator,note
 ```
 
-脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析，所以计划表建议放在投放包目录内；如果复制到别的目录测试，`media_path` 最好改成绝对路径。账号优先通过 `account_key` 从 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。`facebook_content_mode` 和 `composer_url` 只影响 Facebook 任务；旧计划表没有这两列也能继续运行。
+脚本只处理 `status` 为空或 `READY` 的行。相对路径会按 `publish_plan.csv` 所在目录解析；新生成的计划表在 `rpa_work/` 内，所以素材路径通常会是 `../videos/xxx.mp4` 或 `../images/xxx.jpg`。账号优先通过 `account_key` 从投放包根目录的 `账号环境台账.csv` 查找，`browser_profile_id` 只建议临时测试时使用。`facebook_content_mode` 和 `composer_url` 只影响 Facebook 任务；旧计划表没有这两列也能继续运行。
 
 脚本默认使用 `--tab-mode new`，每条发布任务都会在同一个比特浏览器环境里新开一个 Tab，再进入对应平台页面。这个默认值很重要：如果同一个窗口同时登录 TK 和 FB，连续跑计划表时不能复用第一个已有 Tab，否则后一条 FB 任务可能把前一条 TK 草稿页 `goto` 覆盖掉。旧行为只保留给调试：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --only-publish-id PUB-SEQUENCE-TK-001,PUB-SEQUENCE-FB-001 `
   --tab-mode new `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl"
 ```
 
 只有在明确想复用第一个 Tab 做兼容性排查时，才临时传 `--tab-mode reuse-first`。
@@ -292,9 +292,9 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --only-publish-id PUB-FB-TEST-001 `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl"
 ```
 
 `--log-jsonl` 是追加写入，每一行是一条任务记录。预览模式写 `PLANNED`，执行成功准备好草稿后写 `PREPARED`，失败时写 `FAILED` 和错误类型。真实执行记录会包含 `duration_seconds`，用于判断上传慢、页面卡住还是账号验证拖慢任务。
@@ -320,9 +320,9 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --only-publish-id PUB-FB-TEST-001 `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
   --write-plan-status
 ```
 
@@ -346,16 +346,16 @@ status,last_result_status,last_result_at,result_screenshot,error_type,error_mess
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --summarize-log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.csv"
+  --summarize-log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv"
 ```
 
 默认每个 `publish_id` 只保留最新状态，并会尽量从日志里的 `plan_csv` 反查补齐 `client_id`、`product_id`、`tracking_url`、`attribution_token`、素材路径、截图和 `duration_seconds` 等字段。如果要排查历史过程，可以加：
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --summarize-log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\publish_summary.history.csv" `
+  --summarize-log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.history.csv" `
   --summary-include-history
 ```
 
@@ -365,10 +365,10 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 ```powershell
 python docs/scripts/publishing/rpa_operator_console.py `
-  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv" `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv" `
-  --output-html "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\rpa_operator_console.html"
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv" `
+  --output-html "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\rpa_operator_console.html"
 ```
 
 第一版操作台不需要服务器，也不改 DopaMatrix 主项目。它会展示任务状态、平台、账号、客户、产品、素材路径、追踪短链、截图预览、错误信息、人工备注，并为每条任务生成 `PUBLISHED_MANUAL` / `REJECTED_MANUAL` 回填命令。即使没有提前导出 `publish_summary.csv`，也会尝试直接从 `publish_logs.jsonl` 读取每个 `publish_id` 的最新记录。
@@ -388,14 +388,14 @@ python docs/scripts/publishing/rpa_operator_console.py `
 
 ```powershell
 python docs/scripts/publishing/rpa_workbench_server.py `
-  --plan-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_plan.csv" `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_logs.jsonl" `
-  --summary-csv "E:\project\dopaMatrix\output\publish-rpa\batch-sample-test\publish_summary.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl" `
+  --summary-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_summary.csv" `
   --operator "operator-name" `
   --open-browser
 ```
 
-也可以双击 `docs\scripts\publishing\run_workbench.cmd`，再粘贴 `publish_plan.csv` 路径，或者把 `publish_plan.csv` 拖到这个 `.cmd` 上。
+也可以双击 `docs\scripts\publishing\run_workbench.cmd`，再粘贴 `rpa_work\publish_plan.csv` 路径，或者把 `publish_plan.csv` 拖到这个 `.cmd` 上。
 
 确认工作台是本机 `127.0.0.1` 临时服务，不需要 DopaMatrix 主项目、不需要数据库。页面可读取计划表、JSONL、截图和汇总 CSV，并直接写回：
 
@@ -412,7 +412,7 @@ python docs/scripts/publishing/rpa_workbench_server.py `
 
 ```powershell
 python docs/scripts/publishing/bitbrowser_rpa_example.py `
-  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\publish_plan.csv" `
+  --plan-csv "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_plan.csv" `
   --backfill-publish-id PUB-FB-TEST-001 `
   --backfill-status PUBLISHED_MANUAL `
   --post-url "https://www.facebook.com/..." `
@@ -420,7 +420,7 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
   --published-at "2026-08-13T16:30:00" `
   --manual-operator "operator-name" `
   --manual-note "人工检查无误后发布" `
-  --log-jsonl "E:\project\dopaMatrix\output\publish-rpa\publish_logs.jsonl"
+  --log-jsonl "E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)\rpa_work\publish_logs.jsonl"
 ```
 
 如果发布后当前标签页已经跳到了公开帖子，也可以先用 `--detect-post-url` 识别，再决定是否加 `--detect-write-back` 自动回写。
@@ -486,12 +486,12 @@ python docs/scripts/publishing/rpa_selftest.py
 | TikTok 上传页是否能稳定找到 `input[type=file]` | 已验证多轮：单条上传、`publish_plan.csv` 计划模式、以及 2026-08-14 三条重复视频批量彩排均可上传成功；脚本停在最终发布前 |
 | TikTok caption 是否能自动填写 | 已验证多轮：可从交付 CSV 或计划表自动拼接并写入 description；TikTok 默认去掉追踪短链 |
 | Facebook Business Suite 是否能稳定找到文本框和文件上传控件 | 已验证：`auto` 连续多轮通过受控 file chooser 上传图片、填文案、截图，停在发布前；2026-08-14 三条重复图片批量彩排均完成 `uploaded=true`、`caption_filled=true` |
-| 关闭指纹窗口后由脚本重新打开是否会串 Tab | 已验证：`--stop-after-connect --trace-tabs` 看到默认/历史页面保留，脚本新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-cold-start.jsonl` |
-| 指纹窗口已打开时再执行脚本是否会串 Tab | 已验证：脚本不会复用已有 TK/FB 页面，会继续新开任务 Tab；日志 `E:\project\dopaMatrix\output\publish-rpa\tab-trace-already-open.jsonl` |
+| 关闭指纹窗口后由脚本重新打开是否会串 Tab | 已验证：`--stop-after-connect --trace-tabs` 看到默认/历史页面保留，脚本新开任务 Tab。旧测试日志当时写在临时输出目录；新包统一写入 `rpa_work/`。 |
+| 指纹窗口已打开时再执行脚本是否会串 Tab | 已验证：脚本不会复用已有 TK/FB 页面，会继续新开任务 Tab。旧测试日志当时写在临时输出目录；新包统一写入 `rpa_work/`。 |
 | TK + FB 同窗口顺序执行是否会串 Tab | Tab 隔离已验证：TK 单条、FB 单条、以及 2026-08-14 3 条 TK + 3 条 FB 同窗口顺序彩排均在独立任务 Tab 完成草稿准备，未点击最终发布 |
-| 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-TK-001-tiktok-20260813-182536.png` |
-| 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-SEQUENCE-FB-001-facebook-20260813-182007.png` |
-| Facebook 图片帖单条计划草稿准备 | 已验证：2026-08-19 使用 `fb-image-post-plan-test.csv` 生成并执行 `PUB-FB-20260819-001-402E5C`，脚本新开任务 Tab，上传图片、填文案和短链，46.84 秒完成并回写 `PREPARED`；截图 `E:\project\dopaMatrix\output\publish-rpa\PUB-FB-20260819-001-402E5C-facebook-20260819-160426.png` |
+| 冷启动 TikTok 完整草稿准备 | 已验证：视频上传和 caption 填充成功，停在发布前。历史截图保留在当时测试输出；新包统一写入 `rpa_work/screenshots/`。 |
+| 已打开窗口 Facebook 完整草稿准备 | 已验证：图片上传和 caption 填充成功，停在发布前。历史截图保留在当时测试输出；新包统一写入 `rpa_work/screenshots/`。 |
+| Facebook 图片帖单条计划草稿准备 | 已验证：2026-08-19 使用 `fb-image-post-plan-test.csv` 生成并执行 `PUB-FB-20260819-001-402E5C`，脚本新开任务 Tab，上传图片、填文案和短链，46.84 秒完成并回写 `PREPARED`。历史截图保留在当时测试输出；新包统一写入 `rpa_work/screenshots/`。 |
 | Facebook 图片帖发布后 URL 回收 | 已验证：人工发布 `PUB-FB-20260819-001-402E5C` 后，内容日历出现多条历史候选；脚本按最近发布时间优先选中 `16:08` 新帖，并回填 `https://www.facebook.com/1237975296070200/posts/122106554229435838` |
 | Facebook 文件选择器弹出风险 | 已确认：系统原生文件管理器会导致脚本等待超时；已移除裸点 fallback，后续只允许页面 input 或受控 file chooser |
 | Facebook `auto` 多轮稳定性 | 已验证：窗口已打开连续 3 次、`file-chooser` 直连 3 次、冷启动 1 次、完全不传上传参数 1 次均完成上传和文案填充 |
