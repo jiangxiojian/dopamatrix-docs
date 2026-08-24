@@ -557,29 +557,41 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       --soft-blue: #edf4ff;
     }}
     * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; color: var(--ink); background: #fff; }}
-    header {{ padding: 16px 22px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; background: #fff; }}
-    h1 {{ margin: 0 0 10px; font-size: 22px; }}
-    .source {{ display: grid; gap: 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }}
-    .stats, .toolbar, .meta, .actions {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
-    .stats {{ margin-top: 12px; }}
-    .stat {{ min-width: 110px; padding: 8px 10px; border: 1px solid var(--line); background: var(--panel); }}
-    .stat strong {{ display: block; font-size: 19px; }}
-    .toolbar {{ padding: 12px 22px; border-bottom: 1px solid var(--line); }}
+    body {{ margin: 0; font-family: Arial, "Microsoft YaHei", sans-serif; color: var(--ink); background: #f5f7fa; }}
+    header {{ padding: 18px 22px 12px; border-bottom: 1px solid var(--line); background: #fff; }}
+    h1 {{ margin: 0; font-size: 22px; }}
+    .topbar {{ display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; }}
+    .subtitle {{ margin: 6px 0 0; color: var(--muted); font-size: 13px; }}
+    .stats, .toolbar, .meta, .actions, .quick-actions {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
+    .stats {{ justify-content: flex-end; }}
+    .stat {{ min-width: 86px; padding: 7px 10px; border: 1px solid var(--line); background: var(--panel); }}
+    .stat strong {{ display: block; font-size: 18px; line-height: 1.1; }}
+    .stat span {{ color: var(--muted); font-size: 12px; }}
+    .source-details {{ margin-top: 10px; color: var(--muted); font-size: 12px; }}
+    .source-details summary {{ cursor: pointer; color: var(--blue); }}
+    .source {{ display: grid; gap: 4px; margin-top: 8px; overflow-wrap: anywhere; }}
+    .guide {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px 22px; background: #fff; border-bottom: 1px solid var(--line); }}
+    .guide-step {{ border: 1px solid var(--line); background: #fff; padding: 10px 12px; min-height: 64px; }}
+    .guide-step strong {{ display: block; margin-bottom: 4px; }}
+    .guide-step span {{ color: var(--muted); font-size: 13px; }}
+    .toolbar {{ padding: 12px 22px; border-bottom: 1px solid var(--line); background: #fff; display: grid; gap: 10px; }}
+    .toolbar-row {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
     .selection {{ display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }}
     input, select, textarea, button {{ font: inherit; }}
     input, select, textarea {{ border: 1px solid var(--line); padding: 8px; background: #fff; color: var(--ink); }}
-    input[type="search"] {{ width: min(520px, 100%); }}
+    input[type="search"] {{ width: min(620px, 100%); }}
     button {{ border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 10px; cursor: pointer; }}
     button.primary {{ border-color: var(--blue); background: var(--blue); color: #fff; }}
     button.soft {{ border-color: #b7cffd; background: var(--soft-blue); color: #174ea6; }}
     button.danger {{ border-color: #fecdca; color: var(--bad); background: #fff1f3; }}
-    main {{ padding: 16px 22px 36px; display: grid; gap: 14px; }}
-    .task {{ display: grid; grid-template-columns: 260px 1fr; border: 1px solid var(--line); background: #fff; min-height: 220px; }}
-    .shot {{ border-right: 1px solid var(--line); background: #f2f5f7; display: flex; align-items: center; justify-content: center; overflow: hidden; }}
-    .shot img {{ width: 100%; height: 100%; object-fit: contain; display: block; }}
+    main {{ padding: 14px 22px 36px; display: grid; gap: 12px; }}
+    #tasks {{ display: grid; gap: 12px; }}
+    .list-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--muted); font-size: 13px; }}
+    .task {{ display: grid; grid-template-columns: 150px 1fr; border: 1px solid var(--line); background: #fff; min-height: 150px; }}
+    .shot {{ border-right: 1px solid var(--line); background: #f2f5f7; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 150px; }}
+    .shot img {{ width: 100%; height: 100%; max-height: 180px; object-fit: contain; display: block; }}
     .empty-shot {{ color: var(--muted); font-size: 13px; }}
-    .task-main {{ padding: 14px; min-width: 0; }}
+    .task-main {{ padding: 12px 14px; min-width: 0; }}
     .task-head {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }}
     .task-select {{ width: 18px; height: 18px; accent-color: var(--blue); }}
     .badge {{ border: 1px solid var(--line); padding: 3px 7px; font-weight: 700; }}
@@ -587,10 +599,13 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     .badge.bad {{ color: var(--bad); border-color: #fecdca; background: #fff1f3; }}
     .badge.wait {{ color: var(--wait); border-color: #fedf89; background: #fffaeb; }}
     .badge.muted {{ color: #475467; border-color: #d0d5dd; background: #f2f4f7; }}
-    h2 {{ margin: 8px 0 6px; font-size: 18px; overflow-wrap: anywhere; }}
-    .title {{ margin: 0 0 10px; }}
-    .meta {{ color: var(--muted); font-size: 13px; margin-bottom: 10px; }}
-    .paths, .error {{ color: var(--muted); font-size: 12px; display: grid; gap: 3px; overflow-wrap: anywhere; }}
+    h2 {{ margin: 6px 0 4px; font-size: 17px; overflow-wrap: anywhere; }}
+    .title {{ margin: 0 0 8px; }}
+    .meta {{ color: var(--muted); font-size: 13px; margin-bottom: 8px; }}
+    .next-step {{ margin: 8px 0; padding: 8px 10px; background: #fffaeb; border: 1px solid #fedf89; color: #7a4b00; font-size: 13px; }}
+    details.task-details {{ margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }}
+    details.task-details > summary {{ cursor: pointer; color: var(--blue); font-size: 13px; }}
+    .paths, .error {{ color: var(--muted); font-size: 12px; display: grid; gap: 3px; overflow-wrap: anywhere; margin-top: 8px; }}
     .error {{ color: var(--bad); margin-top: 6px; }}
     .forms {{ display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr); gap: 12px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }}
     .form-grid {{ display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; }}
@@ -600,32 +615,58 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     .toast {{ position: fixed; right: 18px; bottom: 18px; max-width: min(420px, calc(100vw - 36px)); padding: 12px 14px; border: 1px solid var(--line); background: #fff; box-shadow: 0 12px 32px rgba(16, 24, 40, .18); display: none; }}
     .toast.show {{ display: block; }}
     @media (max-width: 900px) {{
-      header, .toolbar, main {{ padding-left: 12px; padding-right: 12px; }}
+      header, .toolbar, main, .guide {{ padding-left: 12px; padding-right: 12px; }}
+      .topbar {{ display: grid; }}
+      .guide {{ grid-template-columns: 1fr; }}
       .task {{ grid-template-columns: 1fr; }}
-      .shot {{ height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }}
+      .shot {{ height: 180px; border-right: 0; border-bottom: 1px solid var(--line); }}
       .forms {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
 <body>
   <header>
-    <h1>RPA 确认工作台</h1>
-    <div class="source" id="sources"></div>
-    <div class="stats" id="stats"></div>
+    <div class="topbar">
+      <div>
+        <h1>RPA 确认工作台</h1>
+        <p class="subtitle">按任务准备草稿，人工检查后再发布；这里不会自动点击 TK / FB 的最终发布按钮。</p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+    <details class="source-details">
+      <summary>文件位置</summary>
+      <div class="source" id="sources"></div>
+    </details>
   </header>
+  <section class="guide">
+    <div class="guide-step"><strong>1. 选择任务</strong><span>勾选 READY、FAILED 或 PARTIAL 任务。</span></div>
+    <div class="guide-step"><strong>2. 准备草稿</strong><span>点击“准备选中草稿”，脚本会打开页面并填素材文案。</span></div>
+    <div class="guide-step"><strong>3. 人工发布</strong><span>检查账号、Page、素材和文案后，人工点击平台发布。</span></div>
+    <div class="guide-step"><strong>4. 回填结果</strong><span>识别或填写帖子 URL，再写回状态并导出报告。</span></div>
+  </section>
   <nav class="toolbar">
-    <input type="search" id="search" placeholder="搜索 publish_id / 账号 / 客户 / 产品 / 素材 / 错误">
-    <select id="statusFilter"><option value="ALL">全部状态</option></select>
-    <select id="platformFilter"><option value="ALL">全部平台</option></select>
-    <select id="actionFilter"><option value="ALL">全部建议</option></select>
-    <label class="selection"><input type="checkbox" id="selectVisible">选择当前列表</label>
-    <button id="prepareSelected" class="primary">准备选中草稿</button>
-    <button id="reload" class="soft">刷新</button>
-    <button id="exportSummary" class="soft">导出汇总 CSV</button>
-    <button id="exportReport" class="soft">导出客户报告种子</button>
-    <button id="exportReportPage" class="soft">生成客户报告网页</button>
+    <div class="toolbar-row">
+      <input type="search" id="search" placeholder="搜索任务 ID / 账号 / 客户 / 产品 / 素材 / 错误">
+      <select id="statusFilter"><option value="ALL">全部状态</option></select>
+      <select id="platformFilter"><option value="ALL">全部平台</option></select>
+      <select id="actionFilter"><option value="ALL">全部建议</option></select>
+      <label class="selection"><input type="checkbox" id="selectVisible">选择当前列表</label>
+    </div>
+    <div class="toolbar-row">
+      <button id="prepareSelected" class="primary">准备选中草稿</button>
+      <button id="reload" class="soft">刷新</button>
+      <button id="exportSummary" class="soft">导出汇总 CSV</button>
+      <button id="exportReport" class="soft">导出客户报告种子</button>
+      <button id="exportReportPage" class="soft">生成客户报告网页</button>
+    </div>
   </nav>
-  <main id="tasks"></main>
+  <main>
+    <div class="list-head">
+      <strong>任务列表</strong>
+      <span id="listHint"></span>
+    </div>
+    <div id="tasks"></div>
+  </main>
   <div class="toast" id="toast"></div>
   <script>
     const state = {{ tasks: [], counts: {{}}, platforms: {{}}, sources: {{}} }};
@@ -649,6 +690,21 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       if (['FAILED', 'PARTIAL'].includes(key)) return 'bad';
       if (['REJECTED_MANUAL', 'SKIPPED'].includes(key)) return 'muted';
       return 'wait';
+    }}
+
+    function nextStep(task) {{
+      const status = String(task.status || '').toUpperCase();
+      if (status === 'READY') return '下一步：勾选这条任务，点击“准备选中草稿”。';
+      if (status === 'PREPARED') return '下一步：到 TK / FB 页面检查草稿，确认后人工发布，再回来识别帖子 URL。';
+      if (status === 'PUBLISHED_MANUAL') return '已发布：帖子链接已回填，可以导出汇总或生成客户报告。';
+      if (status === 'FAILED' || status === 'PARTIAL') return '需要处理：先看错误和截图，修复后可加入重试队列。';
+      if (status === 'REJECTED_MANUAL') return '已标记不发布：如需重试，可展开详情后加入重试队列。';
+      return '请检查状态，必要时展开详情处理。';
+    }}
+
+    function labelText(value, fallback = '-') {{
+      const text = String(value || '').trim();
+      return text || fallback;
     }}
 
     function toast(message, bad = false) {{
@@ -689,11 +745,11 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         <span>比特 API：${{esc(sources.bit_api)}}</span>
       `;
       document.querySelector('#stats').innerHTML = `
-        <div class="stat"><strong>${{state.tasks.length}}</strong>任务</div>
-        <div class="stat"><strong>${{state.platforms.tiktok || 0}}</strong>TikTok</div>
-        <div class="stat"><strong>${{state.platforms.facebook || 0}}</strong>Facebook</div>
-        <div class="stat"><strong>${{state.counts.PREPARED || 0}}</strong>待确认</div>
-        <div class="stat"><strong>${{state.counts.PUBLISHED_MANUAL || 0}}</strong>已发布</div>
+        <div class="stat"><strong>${{state.tasks.length}}</strong><span>任务</span></div>
+        <div class="stat"><strong>${{state.platforms.tiktok || 0}}</strong><span>TikTok</span></div>
+        <div class="stat"><strong>${{state.platforms.facebook || 0}}</strong><span>Facebook</span></div>
+        <div class="stat"><strong>${{state.counts.PREPARED || 0}}</strong><span>待确认</span></div>
+        <div class="stat"><strong>${{state.counts.PUBLISHED_MANUAL || 0}}</strong><span>已发布</span></div>
       `;
       fillSelect(statusFilter, Object.keys(state.counts).sort(), '状态');
       fillSelect(platformFilter, Object.keys(state.platforms).sort(), '平台');
@@ -735,6 +791,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
 
     function renderTasks() {{
       const rows = visibleTasks();
+      document.querySelector('#listHint').textContent = `当前显示 ${{rows.length}} / ${{state.tasks.length}} 条`;
       if (!rows.length) {{
         tasksEl.innerHTML = '<div class="empty-shot">没有匹配任务</div>';
         return;
@@ -762,75 +819,76 @@ def render_page(title: str = "RPA 确认工作台") -> str:
               <p class="title">${{esc(task.title)}}</p>
               <div class="meta">
                 <span>账号：${{esc(task.account_key)}}</span>
-                <span>窗口：${{esc(task.profile_name)}}</span>
-                <span>窗口ID：${{esc(task.profile_id)}}</span>
                 <span>客户：${{esc(task.client_id)}}</span>
                 <span>产品：${{esc(task.product_id)}}</span>
-                <span>上传：${{esc(task.uploaded)}}</span>
-                <span>文案：${{esc(task.caption_filled)}}</span>
-                <span>健康：${{esc(task.account_health_status || '')}}</span>
+                <span>素材：${{esc(labelText(task.media_path))}}</span>
               </div>
-              <div class="paths">
-                <div>短链：${{esc(task.tracking_url)}}</div>
-                <div>帖子：${{esc(task.post_url)}}</div>
-                <div>帖子ID：${{esc(task.platform_post_id)}}</div>
-                <div>发布时间：${{esc(task.published_at)}}</div>
-                <div>素材：${{esc(task.media_path)}}</div>
-                <div>截图：${{esc(task.screenshot)}}</div>
-                <div>错误：${{esc(task.error_type)}} ${{esc(task.error_action_label || task.error_action)}} ${{esc(task.error_message)}}</div>
-                <div>诊断：候选 ${{esc(task.candidate_count || '')}} / ${{esc(task.candidate_sources || '')}}</div>
-                <div>扫描：${{esc(task.scanned_tab_count || '')}} 页签 / ${{esc(task.scanner_error_count || '')}} 错误</div>
-                <div>${{esc(task.scanner_errors || '')}}</div>
+              <div class="next-step">${{esc(nextStep(task))}}</div>
+              <div class="quick-actions">
+                <button class="soft" data-action="detect" data-id="${{publishId}}">识别帖子 URL</button>
+                <button class="primary" data-action="backfill" data-id="${{publishId}}">写回状态</button>
+                <button class="soft" data-action="ready" data-id="${{publishId}}">加入重试队列</button>
+                <button class="danger" data-action="reject" data-id="${{publishId}}">不发布</button>
               </div>
-              <div class="forms">
-                <section>
-                  <div class="form-grid">
-                    <label>状态
-                      <select name="${{fieldName(task.publish_id, 'status')}}">
-                        ${{
-                          ['PUBLISHED_MANUAL', 'REJECTED_MANUAL', 'PREPARED', 'FAILED', 'READY']
-                            .map((value) => `<option value="${{value}}" ${{value === status ? 'selected' : ''}}>${{value}}</option>`)
-                            .join('')
-                        }}
-                      </select>
-                    </label>
-                    <label>操作人<input name="${{fieldName(task.publish_id, 'operator')}}" value="${{operator}}"></label>
-                    <label class="wide">帖子 URL<input name="${{fieldName(task.publish_id, 'post_url')}}" value="${{esc(task.post_url)}}"></label>
-                    <label>帖子 ID<input name="${{fieldName(task.publish_id, 'platform_post_id')}}" value="${{esc(task.platform_post_id)}}"></label>
-                    <label>发布时间<input name="${{fieldName(task.publish_id, 'published_at')}}" value="${{esc(task.published_at || '')}}" placeholder="YYYY-MM-DDTHH:MM:SS"></label>
-                    <label>错误类型<input name="${{fieldName(task.publish_id, 'error_type')}}" value="${{esc(task.error_type)}}"></label>
-                    <label>处理建议<input name="${{fieldName(task.publish_id, 'error_action')}}" value="${{esc(task.error_action)}}"></label>
-                    <label>建议说明<input name="${{fieldName(task.publish_id, 'error_action_label')}}" value="${{esc(task.error_action_label)}}"></label>
-                    <label class="wide">备注<textarea name="${{fieldName(task.publish_id, 'manual_note')}}">${{esc(task.manual_note)}}</textarea></label>
-                    <label class="wide">错误信息<textarea name="${{fieldName(task.publish_id, 'error_message')}}">${{esc(task.error_message)}}</textarea></label>
-                  </div>
-                  <div class="actions" style="margin-top:8px">
-                    <button class="soft" data-action="detect" data-id="${{publishId}}">识别帖子 URL</button>
-                    <button class="primary" data-action="backfill" data-id="${{publishId}}">写回状态</button>
-                    <button class="soft" data-action="ready" data-id="${{publishId}}">加入重试队列</button>
-                    <button class="danger" data-action="reject" data-id="${{publishId}}">不发布</button>
-                  </div>
-                </section>
-                <section>
-                  <div class="form-grid">
-                    <label>健康状态
-                      <select name="${{fieldName(task.publish_id, 'health_status')}}">
-                        <option value="OK">OK</option>
-                        <option value="WATCH">WATCH</option>
-                        <option value="BLOCKED">BLOCKED</option>
-                        <option value="LOGIN_REQUIRED">LOGIN_REQUIRED</option>
-                        <option value="PROXY_ISSUE">PROXY_ISSUE</option>
-                        <option value="PAGE_ACCESS_ISSUE">PAGE_ACCESS_ISSUE</option>
-                      </select>
-                    </label>
-                    <label>问题类型<input name="${{fieldName(task.publish_id, 'issue_type')}}" value="${{esc(task.account_health_issue || '')}}"></label>
-                    <label class="wide">账号备注<textarea name="${{fieldName(task.publish_id, 'health_note')}}">${{esc(task.account_health_note || '')}}</textarea></label>
-                  </div>
-                  <div class="actions" style="margin-top:8px">
-                    <button class="soft" data-action="health" data-id="${{publishId}}">记录账号健康</button>
-                  </div>
-                </section>
-              </div>
+              <details class="task-details">
+                <summary>展开详情 / 回填 / 账号健康</summary>
+                <div class="paths">
+                  <div>窗口：${{esc(task.profile_name)}} / 窗口ID：${{esc(task.profile_id)}}</div>
+                  <div>短链：${{esc(task.tracking_url)}}</div>
+                  <div>帖子：${{esc(task.post_url)}}</div>
+                  <div>帖子ID：${{esc(task.platform_post_id)}}</div>
+                  <div>发布时间：${{esc(task.published_at)}}</div>
+                  <div>截图：${{esc(task.screenshot)}}</div>
+                  <div>上传：${{esc(task.uploaded)}} / 文案：${{esc(task.caption_filled)}} / 健康：${{esc(task.account_health_status || '')}}</div>
+                  <div>错误：${{esc(task.error_type)}} ${{esc(task.error_action_label || task.error_action)}} ${{esc(task.error_message)}}</div>
+                  <div>诊断：候选 ${{esc(task.candidate_count || '')}} / ${{esc(task.candidate_sources || '')}}</div>
+                  <div>扫描：${{esc(task.scanned_tab_count || '')}} 页签 / ${{esc(task.scanner_error_count || '')}} 错误</div>
+                  <div>${{esc(task.scanner_errors || '')}}</div>
+                </div>
+                <div class="forms">
+                  <section>
+                    <div class="form-grid">
+                      <label>状态
+                        <select name="${{fieldName(task.publish_id, 'status')}}">
+                          ${{
+                            ['PUBLISHED_MANUAL', 'REJECTED_MANUAL', 'PREPARED', 'FAILED', 'READY']
+                              .map((value) => `<option value="${{value}}" ${{value === status ? 'selected' : ''}}>${{value}}</option>`)
+                              .join('')
+                          }}
+                        </select>
+                      </label>
+                      <label>操作人<input name="${{fieldName(task.publish_id, 'operator')}}" value="${{operator}}"></label>
+                      <label class="wide">帖子 URL<input name="${{fieldName(task.publish_id, 'post_url')}}" value="${{esc(task.post_url)}}"></label>
+                      <label>帖子 ID<input name="${{fieldName(task.publish_id, 'platform_post_id')}}" value="${{esc(task.platform_post_id)}}"></label>
+                      <label>发布时间<input name="${{fieldName(task.publish_id, 'published_at')}}" value="${{esc(task.published_at || '')}}" placeholder="YYYY-MM-DDTHH:MM:SS"></label>
+                      <label>错误类型<input name="${{fieldName(task.publish_id, 'error_type')}}" value="${{esc(task.error_type)}}"></label>
+                      <label>处理建议<input name="${{fieldName(task.publish_id, 'error_action')}}" value="${{esc(task.error_action)}}"></label>
+                      <label>建议说明<input name="${{fieldName(task.publish_id, 'error_action_label')}}" value="${{esc(task.error_action_label)}}"></label>
+                      <label class="wide">备注<textarea name="${{fieldName(task.publish_id, 'manual_note')}}">${{esc(task.manual_note)}}</textarea></label>
+                      <label class="wide">错误信息<textarea name="${{fieldName(task.publish_id, 'error_message')}}">${{esc(task.error_message)}}</textarea></label>
+                    </div>
+                  </section>
+                  <section>
+                    <div class="form-grid">
+                      <label>健康状态
+                        <select name="${{fieldName(task.publish_id, 'health_status')}}">
+                          <option value="OK">OK</option>
+                          <option value="WATCH">WATCH</option>
+                          <option value="BLOCKED">BLOCKED</option>
+                          <option value="LOGIN_REQUIRED">LOGIN_REQUIRED</option>
+                          <option value="PROXY_ISSUE">PROXY_ISSUE</option>
+                          <option value="PAGE_ACCESS_ISSUE">PAGE_ACCESS_ISSUE</option>
+                        </select>
+                      </label>
+                      <label>问题类型<input name="${{fieldName(task.publish_id, 'issue_type')}}" value="${{esc(task.account_health_issue || '')}}"></label>
+                      <label class="wide">账号备注<textarea name="${{fieldName(task.publish_id, 'health_note')}}">${{esc(task.account_health_note || '')}}</textarea></label>
+                    </div>
+                    <div class="actions" style="margin-top:8px">
+                      <button class="soft" data-action="health" data-id="${{publishId}}">记录账号健康</button>
+                    </div>
+                  </section>
+                </div>
+              </details>
             </div>
           </article>
         `;

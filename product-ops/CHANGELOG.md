@@ -14,6 +14,7 @@
 - RPA 确认工作台新增“选择任务并准备草稿”流程；默认使用新 Tab、Facebook `auto` 上传策略，并停在最终发布按钮前。
 - 新增 `run_dopamatrix_publisher.cmd`、`build_publisher.cmd`、`requirements.txt`，用于开发机启动和 PyInstaller Windows 打包。
 - 新增 [15-rpa-operator-quickstart.txt](./15-rpa-operator-quickstart.txt)，提供不依赖 Markdown 工具的普通运营快速说明。
+- RPA 确认工作台做运营可用性改版：顶部路径默认收起，新增四步操作提示，任务列表上移，任务详情和回填表单默认折叠。
 
 ### Verified
 

@@ -150,6 +150,10 @@ def test_operator_console() -> None:
 
 def test_workbench_markup() -> None:
     html = render_page()
+    assert_contains(html, "文件位置", "workbench compact sources")
+    assert_contains(html, "1. 选择任务", "workbench operator guide")
+    assert_contains(html, "任务列表", "workbench task list title")
+    assert_contains(html, "展开详情 / 回填 / 账号健康", "workbench collapsed task details")
     assert_contains(html, "准备选中草稿", "workbench prepare button")
     assert_contains(html, "data-select=", "workbench task selection")
     assert_contains(html, "/api/prepare", "workbench prepare endpoint")
