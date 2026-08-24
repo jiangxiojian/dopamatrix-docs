@@ -792,6 +792,7 @@ def _post_candidate_score(source: str, tab_url: str) -> int:
         "link": 180,
         "text:tiktok_public_url": 230,
         "text:tiktok_item_id": 220,
+        "text:tiktok_studio_content_public_url": 360,
         "text:facebook_public_url": 230,
         "text:facebook_business_content_id": 225,
     }.get(key, 150)
@@ -854,6 +855,13 @@ def _post_candidate_sort_key(
         int(item.get("tab_index", 0)),
         item.get("post_url", ""),
     )
+
+
+def _int_or_default(value: Any, default: int = 9999) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _candidate_url_parts(url: str) -> tuple[str, str, str, str]:
@@ -1057,7 +1065,8 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
     fallback_facebook_page_id = (tab_query.get("asset_id") or [""])[0].strip()
     candidates: list[dict[str, Any]] = []
 
-    def add_candidate(url: str, source: str, text: str = "") -> None:
+    def add_candidate(url: str, source: str, text: str = "", extra: dict[str, Any] | None = None) -> None:
+        extra = extra or {}
         original_tiktok_public_url = platform_key == "tiktok" and tiktok_public_url_has_username(url)
         if platform_key == "facebook":
             business_candidate = facebook_business_content_candidate(
@@ -1089,6 +1098,9 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
             "diagnostic_only": diagnostic_only,
             "auto_write_safe": auto_write_safe,
         }
+        for key in ("studio_row_index", "studio_privacy", "studio_created_text"):
+            if key in extra:
+                candidate[key] = str(extra.get(key) or "").strip()
         candidates.append(candidate)
 
     add_candidate(getattr(page, "url", ""), "tab_url")
@@ -1097,9 +1109,9 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
         items = page.evaluate(
             """() => {
               const items = [];
-              const push = (source, url, text = '') => {
+              const push = (source, url, text = '', extra = {}) => {
                 if (!url) return;
-                items.push({source, url: String(url), text: String(text || '')});
+                items.push({source, url: String(url), text: String(text || ''), ...(extra || {})});
               };
               document.querySelectorAll('link[rel="canonical"][href]').forEach((node) => {
                 push('canonical', node.href || node.getAttribute('href') || '', node.getAttribute('href') || '');
@@ -1118,6 +1130,52 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
                 for (const match of combined.matchAll(publicUrlPattern)) {
                   push('text:tiktok_public_url', match[0], match[0]);
                   if (items.length > 900) break;
+                }
+                if (location.pathname.includes('/tiktokstudio/content')) {
+                  const publicHrefPattern = /https?:\/\/(?:www\.|m\.|vm\.)?tiktok\.com\/@[\\w.-]+\/(?:video|photo)\/\\d+/i;
+                  const rowFor = (node) => {
+                    let current = node;
+                    for (let depth = 0; current && depth < 9; depth += 1, current = current.parentElement) {
+                      const rowText = (current.innerText || current.textContent || '').trim();
+                      if (
+                        rowText.length >= 10 &&
+                        rowText.length <= 1400 &&
+                        /\\b(Public|Private|Friends|Only you)\\b/i.test(rowText)
+                      ) {
+                        return current;
+                      }
+                    }
+                    return node;
+                  };
+                  const rows = [];
+                  document.querySelectorAll('a[href]').forEach((node) => {
+                    const href = String(node.href || node.getAttribute('href') || '');
+                    if (!publicHrefPattern.test(href)) return;
+                    const row = rowFor(node);
+                    const rowText = (row.innerText || row.textContent || node.innerText || href || '').trim();
+                    const rect = row.getBoundingClientRect ? row.getBoundingClientRect() : {top: 999999};
+                    const privacyMatch = rowText.match(/\\b(Public|Private|Friends|Only you)\\b/i);
+                    const createdMatch = rowText.match(/\\b\\d{1,2}\\s+[A-Za-z]{3},\\s+\\d{1,2}:\\d{2}\\s*(?:am|pm)\\b/i);
+                    rows.push({
+                      href,
+                      text: rowText || href,
+                      top: rect.top,
+                      privacy: privacyMatch ? privacyMatch[1] : '',
+                      createdText: createdMatch ? createdMatch[0] : ''
+                    });
+                  });
+                  const seenStudioUrls = new Set();
+                  rows
+                    .sort((a, b) => a.top - b.top)
+                    .forEach((row, index) => {
+                      if (seenStudioUrls.has(row.href)) return;
+                      seenStudioUrls.add(row.href);
+                      push('text:tiktok_studio_content_public_url', row.href, row.text, {
+                        studio_row_index: String(index),
+                        studio_privacy: row.privacy,
+                        studio_created_text: row.createdText
+                      });
+                    });
                 }
                 const idPattern = /["']?(?:item_id|itemId|item_id_str|itemIdStr|video_id|videoId|aweme_id|awemeId|share_item_id|content_id)["']?\\s*[:=]\\s*["']?(\\d{8,})/gi;
                 for (const match of combined.matchAll(idPattern)) {
@@ -1162,7 +1220,7 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
         for item in items:
             if not isinstance(item, dict):
                 continue
-            add_candidate(item.get("url", ""), str(item.get("source", "anchor")), str(item.get("text", "")))
+            add_candidate(item.get("url", ""), str(item.get("source", "anchor")), str(item.get("text", "")), item)
 
     deduped: dict[tuple[str, str], dict[str, Any]] = {}
     for candidate in candidates:
@@ -1206,7 +1264,51 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
             for item in post_candidates
             if item.get("auto_write_safe") and not item.get("diagnostic_only")
         ]
-        if len(post_ids) > 1:
+        studio_candidates = [
+            item
+            for item in safe_candidates
+            if str(item.get("source", "")).strip().lower() == "text:tiktok_studio_content_public_url"
+        ]
+        if studio_candidates:
+            studio_candidates.sort(
+                key=lambda item: (
+                    _int_or_default(item.get("studio_row_index")),
+                    int(item.get("tab_index", 0)),
+                    item.get("post_url", ""),
+                )
+            )
+            latest_studio_candidate = studio_candidates[0]
+            privacy = str(latest_studio_candidate.get("studio_privacy") or "").strip().lower()
+            if privacy and privacy != "public":
+                return {
+                    "detected": False,
+                    "checked_at": checked_at,
+                    "platform": platform_key,
+                    "post_url": "",
+                    "platform_post_id": "",
+                    "published_at": "",
+                    "source": latest_studio_candidate.get("source", ""),
+                    "tab_index": latest_studio_candidate.get("tab_index", 0),
+                    "tab_url": latest_studio_candidate.get("tab_url", ""),
+                    "text": latest_studio_candidate.get("text", ""),
+                    "candidate_count": len(post_candidates),
+                    "candidate_sources": sorted({str(item.get("source", "")) for item in post_candidates if item.get("source")}),
+                    "scanned_tab_count": len(scanned_tabs),
+                    "scanner_error_count": len(scanner_errors),
+                    "scanner_errors": scanner_errors[:5],
+                    "candidates": post_candidates[:10],
+                    "scanned_tabs": scanned_tabs,
+                    "studio_row_index": latest_studio_candidate.get("studio_row_index", ""),
+                    "studio_privacy": latest_studio_candidate.get("studio_privacy", ""),
+                    "studio_created_text": latest_studio_candidate.get("studio_created_text", ""),
+                    "error_type": "TIKTOK_STUDIO_LATEST_NOT_PUBLIC",
+                    "error_message": (
+                        "The latest TikTok Studio content row is not Public. "
+                        "Confirm the row privacy before writing the post URL back."
+                    ),
+                }
+            viable = [latest_studio_candidate]
+        elif len(post_ids) > 1:
             return {
                 "detected": False,
                 "checked_at": checked_at,
@@ -1232,7 +1334,7 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
                     "The script refused to auto-write a URL because an old video tab may be mixed in."
                 ),
             }
-        if post_candidates and not safe_candidates:
+        elif post_candidates and not safe_candidates:
             best = post_candidates[0]
             return {
                 "detected": False,
@@ -1258,7 +1360,8 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
                     "Open the public @username/video link or paste the URL manually before writing back."
                 ),
             }
-        viable = safe_candidates
+        else:
+            viable = safe_candidates
     else:
         viable = post_candidates
     if platform_key == "facebook":
@@ -2772,7 +2875,7 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
         return "FIX_MEDIA"
     if error_key == "PLATFORM_RATE_LIMIT_OR_RESTRICTION":
         return "PAUSE_ACCOUNT"
-    if error_key == "POST_URL_CONFLICT":
+    if error_key in {"POST_URL_CONFLICT", "TIKTOK_STUDIO_LATEST_NOT_PUBLIC"}:
         return "HUMAN_REVIEW"
     if error_key in {
         "POST_URL_NOT_FOUND",

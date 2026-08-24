@@ -339,6 +339,74 @@ def test_tiktok_same_id_public_url_can_be_detected() -> None:
     assert_equal(result["auto_write_safe"], True, "TikTok public URL is auto-write safe")
 
 
+def test_tiktok_studio_content_list_prefers_latest_row() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content",
+                [
+                    {
+                        "source": "text:tiktok_studio_content_public_url",
+                        "url": "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+                        "text": "new row Public 24 Aug, 3:48 pm",
+                        "studio_row_index": "0",
+                        "studio_privacy": "Public",
+                        "studio_created_text": "24 Aug, 3:48 pm",
+                    },
+                    {
+                        "source": "text:tiktok_studio_content_public_url",
+                        "url": "https://www.tiktok.com/@xiojian9527/video/7675641440810093844",
+                        "text": "old row Private 19 Aug, 3:29 pm",
+                        "studio_row_index": "1",
+                        "studio_privacy": "Private",
+                        "studio_created_text": "19 Aug, 3:29 pm",
+                    },
+                    {
+                        "source": "text:tiktok_item_id",
+                        "url": "https://www.tiktok.com/player/v1/7675641440810093844",
+                        "text": "old item_id from page state",
+                    },
+                ],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], True, "TikTok Studio content list is detected")
+    assert_equal(
+        result["post_url"],
+        "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+        "TikTok Studio content list prefers latest row",
+    )
+    assert_equal(result["source"], "text:tiktok_studio_content_public_url", "TikTok Studio row source")
+
+
+def test_tiktok_studio_latest_private_is_not_detected() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content",
+                [
+                    {
+                        "source": "text:tiktok_studio_content_public_url",
+                        "url": "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+                        "text": "new row Private 24 Aug, 3:48 pm",
+                        "studio_row_index": "0",
+                        "studio_privacy": "Private",
+                        "studio_created_text": "24 Aug, 3:48 pm",
+                    }
+                ],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], False, "TikTok latest private row is not detected")
+    assert_equal(result["error_type"], "TIKTOK_STUDIO_LATEST_NOT_PUBLIC", "TikTok latest private error type")
+
+
 def test_facebook_calendar_candidate_order() -> None:
     checked_at = datetime(2026, 8, 19, 16, 13, 39)
     candidates = [
@@ -387,6 +455,8 @@ def main() -> int:
         test_tiktok_raw_item_id_is_diagnostic_only,
         test_tiktok_studio_query_public_fallback_is_not_auto_detected,
         test_tiktok_same_id_public_url_can_be_detected,
+        test_tiktok_studio_content_list_prefers_latest_row,
+        test_tiktok_studio_latest_private_is_not_detected,
         test_facebook_calendar_candidate_order,
     ]
     for test in tests:
