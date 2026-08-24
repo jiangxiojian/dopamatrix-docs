@@ -166,6 +166,44 @@ PUBLISH_PLAN_FIELDS = [
     "manual_checked_at",
     "manual_note",
 ]
+ACCOUNT_LEDGER_FIELDS = [
+    "account_key",
+    "platform",
+    "profile_id",
+    "profile_name",
+    "content_check_action",
+    "default",
+    "notes",
+    "owner_type",
+    "owner_client_id",
+    "authorization_type",
+    "region",
+    "proxy_region",
+    "proxy_provider",
+    "daily_publish_limit",
+    "health_status",
+    "health_note",
+    "last_checked_at",
+]
+ACCOUNT_LEDGER_COLUMNS = {
+    "account_key": ("account_key", "账号键", "account_code", "key"),
+    "platform": ("platform", "平台"),
+    "profile_id": ("profile_id", "browser_profile_id", "browser_id", "window_id", "窗口ID", "id"),
+    "profile_name": ("profile_name", "profileName", "窗口名称", "name", "remark", "title"),
+    "content_check_action": ("content_check_action", "内容检查处理", "auto_content_check"),
+    "default": ("default", "is_default", "isDefault", "默认"),
+    "notes": ("notes", "备注", "note", "comment"),
+    "owner_type": ("owner_type", "ownerType", "归属类型"),
+    "owner_client_id": ("owner_client_id", "ownerClientId", "客户ID"),
+    "authorization_type": ("authorization_type", "authorizationType", "授权方式"),
+    "region": ("region", "地区"),
+    "proxy_region": ("proxy_region", "proxyRegion", "代理地区"),
+    "proxy_provider": ("proxy_provider", "proxyProvider", "代理供应商"),
+    "daily_publish_limit": ("daily_publish_limit", "dailyPublishLimit", "每日发布上限"),
+    "health_status": ("health_status", "healthStatus", "健康状态"),
+    "health_note": ("health_note", "healthNote", "健康备注"),
+    "last_checked_at": ("last_checked_at", "lastCheckedAt", "最近检查时间"),
+}
 SUMMARY_FIELDS = [
     "publish_id",
     "client_id",
@@ -616,6 +654,72 @@ class BitBrowserClient:
         response.raise_for_status()
         return response.json()
 
+    def list_profiles(self, page: int = 0, page_size: int = 100) -> list[dict[str, Any]]:
+        payloads = [
+            {"page": page, "pageSize": page_size},
+            {"page": page + 1, "pageSize": page_size},
+            {"page": page + 1, "size": page_size},
+        ]
+        last_error: Exception | None = None
+        for payload in payloads:
+            try:
+                collected: list[dict[str, Any]] = []
+                seen: set[tuple[str, str, str]] = set()
+                page_value = payload.get("page")
+                size_value = payload.get("pageSize") or payload.get("size")
+                current_page = int(page_value) if page_value is not None else 1
+                current_size = int(size_value) if size_value is not None else page_size
+                for _ in range(20):
+                    request_payload = dict(payload)
+                    request_payload["page"] = current_page
+                    request_payload["pageSize"] = current_size
+                    request_payload["size"] = current_size
+                    response = requests.post(
+                        f"{self.base_url}/browser/list",
+                        json=request_payload,
+                        timeout=self.timeout,
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    if body.get("success") is False:
+                        raise BitBrowserError(
+                            "BitBrowser failed to list profiles. "
+                            f"Raw response: {json.dumps(body, ensure_ascii=False)}"
+                        )
+                    rows = extract_bitbrowser_profile_rows(body)
+                    new_count = 0
+                    for row in rows:
+                        fingerprint = _bitbrowser_profile_fingerprint(row)
+                        if fingerprint in seen:
+                            continue
+                        seen.add(fingerprint)
+                        collected.append(row)
+                        new_count += 1
+                    meta = body.get("data")
+                    total = None
+                    if isinstance(meta, dict):
+                        for key in ("total", "count", "recordsTotal"):
+                            value = meta.get(key)
+                            if isinstance(value, int):
+                                total = value
+                                break
+                            if isinstance(value, str) and value.strip().isdigit():
+                                total = int(value.strip())
+                                break
+                    if total is not None and len(collected) >= total:
+                        break
+                    if new_count == 0:
+                        break
+                    if len(rows) < current_size:
+                        break
+                    current_page += 1
+                return collected
+            except Exception as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return []
+
     def open_profile(self, profile_id: str) -> OpenedProfile:
         payload = {"id": profile_id}
         response = requests.post(
@@ -669,6 +773,165 @@ def normalize_cdp_url(value: str, source: str = "") -> str:
     if source == "ws":
         return f"ws://{value}"
     return f"http://{value}"
+
+
+BITBROWSER_PROFILE_CONTAINER_KEYS = ("list", "rows", "records", "items", "profiles", "data", "result")
+BITBROWSER_PROFILE_ROW_KEYS = {
+    "id",
+    "profileid",
+    "profile_id",
+    "browserid",
+    "browser_id",
+    "browser_profile_id",
+    "windowid",
+    "window_id",
+    "wid",
+    "name",
+    "profilename",
+    "profile_name",
+    "remark",
+    "title",
+    "platform",
+    "group",
+    "groupname",
+    "group_name",
+    "status",
+    "tag",
+    "tags",
+    "proxy",
+}
+
+
+def _first_nonempty_value(row: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    lowered = {str(key).strip().lower(): value for key, value in row.items() if str(key).strip()}
+    for key in keys:
+        value = lowered.get(key.strip().lower())
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _bitbrowser_profile_fingerprint(row: dict[str, Any]) -> tuple[str, str, str]:
+    profile_id = _first_nonempty_value(row, "id", "profile_id", "browser_profile_id", "browser_id", "window_id", "wid")
+    profile_name = _first_nonempty_value(row, "name", "profile_name", "remark", "title")
+    return (
+        profile_id,
+        profile_name,
+        json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)[:200],
+    )
+
+
+def _looks_like_bitbrowser_profile_row(row: dict[str, Any]) -> bool:
+    keys = {str(key).strip().lower() for key in row.keys() if str(key).strip()}
+    return bool(keys.intersection(BITBROWSER_PROFILE_ROW_KEYS))
+
+
+def extract_bitbrowser_profile_rows(payload: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def visit(node: Any) -> None:
+        if node is None:
+            return
+        if isinstance(node, list):
+            for item in node:
+                visit(item)
+            return
+        if not isinstance(node, dict):
+            return
+
+        if _looks_like_bitbrowser_profile_row(node):
+            fingerprint = _bitbrowser_profile_fingerprint(node)
+            if fingerprint not in seen:
+                rows.append(node)
+                seen.add(fingerprint)
+
+        for key in BITBROWSER_PROFILE_CONTAINER_KEYS:
+            child = node.get(key)
+            if isinstance(child, (list, dict)):
+                visit(child)
+
+    visit(payload)
+    return rows
+
+
+def normalize_account_ledger_row(row: dict[str, Any]) -> dict[str, str]:
+    normalized = {
+        field: _first_nonempty_value(row, *ACCOUNT_LEDGER_COLUMNS[field])
+        for field in ACCOUNT_LEDGER_FIELDS
+    }
+    if not normalized.get("account_key"):
+        normalized["account_key"] = normalized.get("profile_name") or normalized.get("profile_id", "")
+    if not normalized.get("platform"):
+        name_hint = " ".join(
+            part for part in [normalized.get("account_key", ""), normalized.get("profile_name", "")] if part
+        ).strip().lower()
+        if name_hint.startswith("tk") or "tiktok" in name_hint:
+            normalized["platform"] = "tiktok"
+        elif name_hint.startswith("fb") or "facebook" in name_hint:
+            normalized["platform"] = "facebook"
+    normalized["platform"] = normalize_platform_name(normalized.get("platform", ""))
+    default_value = normalized.get("default", "").strip().lower()
+    if default_value in {"true", "1", "yes", "y", "default", "是", "允许"}:
+        normalized["default"] = "Y"
+    elif default_value in {"false", "0", "no", "n", "否"}:
+        normalized["default"] = "N"
+    return normalized
+
+
+def read_account_ledger_rows(csv_path: Path) -> list[dict[str, str]]:
+    if not csv_path.is_file():
+        return []
+    return [normalize_account_ledger_row(row) for row in _read_csv_rows(csv_path)]
+
+
+def write_account_ledger_rows(csv_path: Path, rows: list[dict[str, str]]) -> None:
+    fieldnames = list(ACCOUNT_LEDGER_FIELDS)
+    for row in rows:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows([{field: str(row.get(field, "")).strip() for field in fieldnames} for row in rows])
+
+
+def merge_account_ledger_rows(
+    existing_rows: list[dict[str, str]],
+    discovered_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    merged: list[dict[str, str]] = [row.copy() for row in existing_rows]
+    index: dict[str, int] = {}
+    for position, row in enumerate(merged):
+        key = row.get("profile_id") or row.get("account_key") or row.get("profile_name")
+        if key and key not in index:
+            index[key] = position
+
+    for candidate in discovered_rows:
+        candidate = normalize_account_ledger_row(candidate)
+        key = candidate.get("profile_id") or candidate.get("account_key") or candidate.get("profile_name")
+        if key and key in index:
+            target = merged[index[key]]
+            for field in ACCOUNT_LEDGER_FIELDS:
+                if not target.get(field) and candidate.get(field):
+                    target[field] = candidate[field]
+            continue
+        merged.append(candidate)
+        if key:
+            index[key] = len(merged) - 1
+    return merged
 
 
 def _first_nonempty(row: dict[str, str], *keys: str) -> str:

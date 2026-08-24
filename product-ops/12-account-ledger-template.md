@@ -7,6 +7,7 @@
 ## 用途
 
 这份模板给运营和负责人准备 `账号环境台账.csv` 用。  
+现在 EXE 可以先从 BitBrowser 拉窗口，再自动生成或合并台账；人工主要补齐缺字段。  
 当前发布脚本实际会读取的最小字段只有：
 
 - `account_key`
@@ -18,6 +19,14 @@
 - `notes`
 
 其余列是建议扩展项，方便后面做账号风险、代理和归因管理。
+
+## 现在怎么用
+
+1. 在 EXE 里点“同步台账”。
+2. 让它拉出 BitBrowser 里的窗口信息。
+3. 只补缺失的账号键、平台归属、客户归属和健康备注。
+4. 保存后，文件会回写到投放包根目录的 `账号环境台账.csv`。
+5. 发布脚本会优先读这份文件，不需要再手工维护别的台账副本。
 
 ## 建议字段
 
@@ -40,6 +49,20 @@
 | `health_status` | 否 | `OK` / `WATCH` / `BLOCKED` / `LOGIN_REQUIRED` / `PROXY_ISSUE`。 |
 | `health_note` | 否 | 账号健康说明。 |
 | `last_checked_at` | 否 | 最近一次复检时间。 |
+
+## 字段说明
+
+- `account_key`：账号的稳定主键。发布计划、回填日志、报告都用它串同一个账号，不建议随便改。
+- `platform`：平台名，只填 `tiktok` 或 `facebook`。
+- `profile_id`：BitBrowser 窗口 ID，脚本用它去打开环境。
+- `profile_name`：给人看的窗口名，方便在台账里快速辨认。
+- `content_check_action`：遇到 TikTok 内容检查弹窗时怎么处理。
+- `default`：是否作为该平台默认环境。
+- `owner_type`：账号归属是自有、客户还是共享。
+- `owner_client_id`：账号归属到哪个客户。
+- `authorization_type`：账号是直登、业务权限还是托管。
+- `health_status`：当前账号健康状态。
+- `health_note`：健康状态的补充说明。
 
 ## CSV 头
 

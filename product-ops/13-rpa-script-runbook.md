@@ -3,7 +3,7 @@
 > 更新时间：2026-08-24
 > 文档类型：使用说明  
 > 状态：实施中
-> 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
+> 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_ledger_sync_selftest.py](../scripts/publishing/rpa_ledger_sync_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
 
 ## 这套脚本做什么
 
@@ -60,6 +60,15 @@
 - 素材文件
 - Python + Playwright
 
+如果使用图形化 EXE，最少先准备这 4 项：
+
+- `账号环境台账.csv`
+- `矩阵投放文案对照表.csv`
+- `videos/`
+- `images/`
+
+其中 `账号环境台账.csv` 现在可以先由 EXE 从 BitBrowser 同步窗口，再人工补缺字段保存回投放包根目录。
+
 其中 Python + Playwright 只是在尚未打包的开发/维护机器上需要；交给普通运营时，应提供完整的 `DopaMatrixPublisher` 打包文件夹。
 
 建议先安装：
@@ -82,6 +91,8 @@ python .\scripts\publishing\bitbrowser_rpa_example.py `
 ```
 
 适合第一次把交付包转成 `rpa_work/publish_plan.csv`。
+
+如果台账还没整理好，可以先在 EXE 里点“同步台账”，把窗口信息拉出来后再生成计划。
 
 ### 先预览，不打开浏览器
 
@@ -188,6 +199,7 @@ python .\scripts\publishing\rpa_selftest.py
 - `rpa_work/customer_report_seed.csv`：客户报告明细种子
 - `rpa_work/customer_report_overview.csv`：客户报告概览种子
 - `rpa_work/customer_report.html`：客户报告网页
+- `账号环境台账.csv`：BitBrowser 窗口同步后的账号台账，保存回投放包根目录
 
 旧测试包如果已经把这些文件放在投放包根目录，脚本仍然可以打开；新包统一按 `rpa_work/` 整理。
 

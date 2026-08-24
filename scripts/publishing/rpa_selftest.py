@@ -10,6 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import rpa_customer_report_page_selftest  # noqa: E402
+import rpa_ledger_sync_selftest  # noqa: E402
 import rpa_operator_console_selftest  # noqa: E402
 import rpa_stability_selftest  # noqa: E402
 import rpa_url_detection_selftest  # noqa: E402
@@ -21,6 +22,9 @@ def main() -> int:
     print()
     print("Running customer report page self-test...")
     rpa_customer_report_page_selftest.main()
+    print()
+    print("Running BitBrowser ledger sync self-test...")
+    rpa_ledger_sync_selftest.main()
     print()
     print("Running operator console self-test...")
     rpa_operator_console_selftest.main()

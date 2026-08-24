@@ -8,6 +8,11 @@
 
 ### Changed
 
+- `DopaMatrixPublisher.exe` 的台账同步窗口补了 Treeview 选中回调防重入，避免同步后刷新第一行时反复触发行选中，导致窗口假死或“未响应”。
+- `DopaMatrixPublisher.exe` 的台账同步进一步改为独立子进程拉取 BitBrowser 窗口，避免同步按钮把主窗口拖成“未响应”。
+- `DopaMatrixPublisher.exe` 的台账同步窗口改成可滚动布局，BitBrowser 窗口同步改为后台执行，避免大窗口卡住或“未响应”。
+- `DopaMatrixPublisher.exe` 新增“同步台账”入口：可从 BitBrowser 拉取窗口列表、合并到 `账号环境台账.csv`，再让人工补缺字段并保存回投放包根目录。
+- 新增 `rpa_ledger_sync_selftest.py`，用于离线回归 BitBrowser 窗口解析、台账归一化、台账合并和 `/browser/list` 响应兼容。
 - `DopaMatrixPublisher.exe` 启动器补充投放包检查：选择文件夹后会提示文案表、账号台账、`videos/`、`images/`、素材数量和已有 `publish_plan.csv` 是否存在。
 - `DopaMatrixPublisher.exe` 如果发现已有 `rpa_work/publish_plan.csv`，会把启动器里后来填写的客户 ID、产品 ID、操作人补到计划表空字段；已有非空字段不会覆盖。
 - TikTok 发布后 URL 自动识别改为保守写回：只接受 `@账号/video/ID` 或 `@账号/photo/ID` 公开链接；`player/v1/ID`、Studio `item_id/video_id` 只作为诊断候选，发现多个不同 TikTok ID 时返回 `POST_URL_CONFLICT` 并拒绝自动写回。
