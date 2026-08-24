@@ -237,6 +237,108 @@ def test_detection_diagnostics() -> None:
     assert_equal(missed["scanner_errors"][0]["source"], "error:RuntimeError", "Scanner error source")
 
 
+def test_tiktok_conflicting_candidates_are_not_detected() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content",
+                [
+                    {
+                        "source": "text:tiktok_item_id",
+                        "url": "https://www.tiktok.com/player/v1/7675641440810093844",
+                        "text": "old item_id from Studio state",
+                    },
+                    {
+                        "source": "text:tiktok_public_url",
+                        "url": "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+                        "text": "new public video",
+                    },
+                ],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], False, "TikTok conflicting IDs are not auto-detected")
+    assert_equal(result["error_type"], "POST_URL_CONFLICT", "TikTok conflict error type")
+    assert_equal(
+        result["conflicting_post_ids"],
+        ["7675641440810093844", "7677501759295687956"],
+        "TikTok conflict lists both IDs",
+    )
+
+
+def test_tiktok_raw_item_id_is_diagnostic_only() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content",
+                [
+                    {
+                        "source": "text:tiktok_item_id",
+                        "url": "https://www.tiktok.com/player/v1/7675641440810093844",
+                        "text": "item_id only",
+                    }
+                ],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], False, "TikTok raw item_id is not auto-detected")
+    assert_equal(result["error_type"], "TIKTOK_POST_URL_NOT_PUBLIC", "TikTok raw item_id error type")
+
+
+def test_tiktok_studio_query_public_fallback_is_not_auto_detected() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content?item_id=7677501759295687956&username=xiojian9527",
+                [],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], False, "TikTok Studio query fallback is not auto-detected")
+    assert_equal(result["error_type"], "TIKTOK_POST_URL_NOT_PUBLIC", "TikTok Studio query fallback error type")
+
+
+def test_tiktok_same_id_public_url_can_be_detected() -> None:
+    from bitbrowser_rpa_example import detect_post_url_in_context
+
+    context = FakeContext(
+        [
+            FakePage(
+                "https://www.tiktok.com/tiktokstudio/content",
+                [
+                    {
+                        "source": "text:tiktok_item_id",
+                        "url": "https://www.tiktok.com/player/v1/7677501759295687956",
+                        "text": "same item_id from Studio state",
+                    },
+                    {
+                        "source": "text:tiktok_public_url",
+                        "url": "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+                        "text": "same public video",
+                    },
+                ],
+            )
+        ]
+    )
+    result = detect_post_url_in_context(context, "tiktok")
+    assert_equal(result["detected"], True, "TikTok same ID public URL is detected")
+    assert_equal(
+        result["post_url"],
+        "https://www.tiktok.com/@xiojian9527/video/7677501759295687956",
+        "TikTok same ID prefers public URL",
+    )
+    assert_equal(result["auto_write_safe"], True, "TikTok public URL is auto-write safe")
+
+
 def test_facebook_calendar_candidate_order() -> None:
     checked_at = datetime(2026, 8, 19, 16, 13, 39)
     candidates = [
@@ -281,6 +383,10 @@ def main() -> int:
         test_facebook_post_ids,
         test_facebook_embedded_url_candidates,
         test_detection_diagnostics,
+        test_tiktok_conflicting_candidates_are_not_detected,
+        test_tiktok_raw_item_id_is_diagnostic_only,
+        test_tiktok_studio_query_public_fallback_is_not_auto_detected,
+        test_tiktok_same_id_public_url_can_be_detected,
         test_facebook_calendar_candidate_order,
     ]
     for test in tests:

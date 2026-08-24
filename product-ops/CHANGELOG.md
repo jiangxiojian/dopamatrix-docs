@@ -9,6 +9,9 @@
 ### Changed
 
 - `DopaMatrixPublisher.exe` 启动器补充投放包检查：选择文件夹后会提示文案表、账号台账、`videos/`、`images/`、素材数量和已有 `publish_plan.csv` 是否存在。
+- `DopaMatrixPublisher.exe` 如果发现已有 `rpa_work/publish_plan.csv`，会把启动器里后来填写的客户 ID、产品 ID、操作人补到计划表空字段；已有非空字段不会覆盖。
+- TikTok 发布后 URL 自动识别改为保守写回：只接受 `@账号/video/ID` 或 `@账号/photo/ID` 公开链接；`player/v1/ID`、Studio `item_id/video_id` 只作为诊断候选，发现多个不同 TikTok ID 时返回 `POST_URL_CONFLICT` 并拒绝自动写回。
+- 确认工作台的“识别帖子 URL”失败提示会显示 `POST_URL_CONFLICT`、`TIKTOK_POST_URL_NOT_PUBLIC` 等具体原因和冲突 ID，方便运营手动粘贴正确公开视频链接。
 - 普通运营说明和发布前准备清单明确投放包选择口径：选择 `dopamatrix_delivery_xxx` 这一层，不选择 `videos/`、`images/` 或单个素材文件。
 - 素材目录规范固定为视频放 `videos/`，图片放 `images/`，文案表里的素材文件名需要能在这两个目录中找到。
 - 新投放包默认把脚本产物集中到 `rpa_work/`：`publish_plan.csv`、`publish_logs.jsonl`、`publish_summary.csv`、客户报告 CSV/HTML 和账号健康记录不再散落在投放包根目录。

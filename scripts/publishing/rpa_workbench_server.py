@@ -321,14 +321,18 @@ class WorkbenchState:
         try:
             pw, browser, context = connect_browser_context(opened.cdp_url)
             result = detect_post_url_in_context(context, platform)
-            result["detection_status"] = "POST_URL_DETECTED" if result.get("detected") else "POST_URL_NOT_FOUND"
             result["status"] = task.get("status", "") or "PREPARED"
             if result.get("detected"):
+                result["detection_status"] = "POST_URL_DETECTED"
                 result["error_action"] = recommend_error_action("", "PUBLISHED_MANUAL")
             else:
-                result["error_type"] = "POST_URL_NOT_FOUND"
-                result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
-                result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
+                result["error_type"] = str(result.get("error_type") or "POST_URL_NOT_FOUND")
+                result["detection_status"] = result["error_type"]
+                result["error_action"] = recommend_error_action(result["error_type"], result["status"])
+                result["error_message"] = str(
+                    result.get("error_message")
+                    or "No public post URL was found in the current BitBrowser tabs."
+                )
             result["error_action_label"] = describe_error_action(result.get("error_action", ""))
             payload = {
                 "plan": {
@@ -906,6 +910,15 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       if (el) el.value = text || '';
     }}
 
+    function detectionFailureMessage(result) {{
+      const type = String(result.error_type || result.detection_status || 'POST_URL_NOT_FOUND');
+      let message = result.error_message || '没有在当前标签页识别到公开帖子 URL';
+      if (Array.isArray(result.conflicting_post_ids) && result.conflicting_post_ids.length) {{
+        message += ` 冲突 ID：${{result.conflicting_post_ids.join(', ')}}`;
+      }}
+      return `${{type}}：${{message}}`;
+    }}
+
     async function submitBackfill(id, forcedStatus = '') {{
       const status = forcedStatus || value(id, 'status');
       const body = {{
@@ -937,7 +950,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       const response = await api('/api/detect-post-url', {{ method: 'POST', body: JSON.stringify(body) }});
       const result = response.result || {{}};
       if (!result.detected) {{
-        toast('没有在当前标签页识别到公开帖子 URL', true);
+        toast(detectionFailureMessage(result), true);
         return;
       }}
       setValue(id, 'status', 'PUBLISHED_MANUAL');

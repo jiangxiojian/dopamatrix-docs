@@ -425,6 +425,8 @@ python docs/scripts/publishing/bitbrowser_rpa_example.py `
 
 如果发布后当前标签页已经跳到了公开帖子，也可以先用 `--detect-post-url` 识别，再决定是否加 `--detect-write-back` 自动回写。
 
+TikTok 自动识别按保守规则执行：只有 `https://www.tiktok.com/@账号/video/ID` 或 `https://www.tiktok.com/@账号/photo/ID` 这种公开视频链接才允许写回。`player/v1/ID`、Studio 页面里的 `item_id/video_id` 只作为诊断候选；如果当前比特浏览器窗口里同时发现多个不同 TikTok ID，脚本会返回 `POST_URL_CONFLICT` 并拒绝自动写回。遇到这种情况，运营应手动打开当前发布作品，复制正确的 `@账号/video/ID` 链接，粘贴到操作台的帖子链接字段后再写回状态。
+
 当前支持的人工回填状态：
 
 | 状态 | 用途 |
@@ -502,8 +504,8 @@ python docs/scripts/publishing/rpa_selftest.py
 | RPA 操作台增强 | 已静态验证：批量彩排目录生成的 HTML 包含 6 条任务、状态/平台筛选、搜索框、复制按钮、JSONL 回填参数和失败/部分成功重试命令 |
 | Facebook 视频/Reels 脚本层支持 | 已静态验证：`--plan-video-platforms tiktok,facebook --plan-facebook-video-mode reel` 可生成 FB 视频计划，`--print-plan` 会带出 `facebook_content_mode` 和 `composer_url`；操作台能展示这些字段 |
 | 一键运行模式 | 已验证：直接运行脚本会自动发现 READY 计划、打开环境、使用默认 `auto` 上传、写回 `PREPARED`，停在发布前 |
-| 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；TikTok 现在也能从 Studio / Creator Center 查询参数里的 `item_id`、`video_id`、`aweme_id` 等字段提取 post id，2026-08-19 已用真实 `tiktokstudio/content` 页面回填 `https://www.tiktok.com/@xiojian9527/video/7675641440810093844`；同日 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
-| URL 识别回归自测 | 已验证：`rpa_url_detection_selftest.py` 覆盖 TK 公开视频/Studio 查询参数、FB 公开帖/图片路径/Business Suite `content_id`、页面内嵌链接候选和 FB 内容日历多候选排序 |
+| 发布后 URL 自动识别 | 已验证：本地样本 URL 能抽取 TK/FB post id；TikTok 自动写回改为只接受 `@账号/video/ID` 或 `@账号/photo/ID` 公开链接，Studio / Creator Center 里的 `item_id/video_id/aweme_id` 和 `player/v1/ID` 只作为诊断候选，避免把旧视频 ID 写回；同日 Facebook Page 发布后，脚本从 Business Suite 内容日历 `content_id` 推导并回填 `https://www.facebook.com/1237975296070200/posts/122106457737435838` |
+| URL 识别回归自测 | 已验证：`rpa_url_detection_selftest.py` 覆盖 TK 公开视频、原始 item_id 拒绝写回、多 TikTok ID 冲突拒绝写回、FB 公开帖/图片路径/Business Suite `content_id`、页面内嵌链接候选和 FB 内容日历多候选排序 |
 | 平台是否出现登录、安全验证、商业声明或版权弹窗 | TikTok 首次上传出现内容检查和编辑功能提示弹窗；Facebook 首次进入 composer 出现浏览器通知权限弹窗，建议屏蔽；自动内容检查弹窗默认暂停，教程类弹窗会安全关闭 |
 | TikTok Studio / Creator Center 真实页面是否能稳定从查询参数回收 post id | 已验证 | 2026-08-19 使用真实 `tiktokstudio/content` 页面中的 `item_id`/`video_id` 结果回收 post id，并成功回填公开视频链接 |
 

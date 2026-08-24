@@ -15,6 +15,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from rpa_operator_console import generate_console  # noqa: E402
 from rpa_workbench_server import WorkbenchConfig, WorkbenchState, render_page  # noqa: E402
 from bitbrowser_rpa_example import generate_publish_plan, load_publish_plan  # noqa: E402
+from dopa_matrix_publisher import fill_missing_plan_metadata  # noqa: E402
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
@@ -311,6 +312,48 @@ def test_generated_plan_uses_rpa_work() -> None:
             raise AssertionError(f"image path should point back to images: {media_paths}")
 
 
+def test_fill_missing_plan_metadata() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        plan_csv = root / "publish_plan.csv"
+        write_csv(
+            plan_csv,
+            ["publish_id", "client_id", "product_id", "operator", "status"],
+            [
+                {
+                    "publish_id": "PUB-001",
+                    "client_id": "",
+                    "product_id": "",
+                    "operator": "",
+                    "status": "READY",
+                },
+                {
+                    "publish_id": "PUB-002",
+                    "client_id": "CUST-OLD",
+                    "product_id": "PROD-OLD",
+                    "operator": "old-op",
+                    "status": "READY",
+                },
+            ],
+        )
+
+        changed = fill_missing_plan_metadata(plan_csv, "CUST-NEW", "PROD-NEW", "tester")
+        if changed != 1:
+            raise AssertionError(f"expected one changed row, got {changed}")
+
+        with plan_csv.open("r", encoding="utf-8-sig", newline="") as fh:
+            rows = list(csv.DictReader(fh))
+        first, second = rows
+        if first["client_id"] != "CUST-NEW" or first["product_id"] != "PROD-NEW" or first["operator"] != "tester":
+            raise AssertionError(f"blank metadata was not filled: {first}")
+        if second["client_id"] != "CUST-OLD" or second["product_id"] != "PROD-OLD" or second["operator"] != "old-op":
+            raise AssertionError(f"existing metadata should not be overwritten: {second}")
+
+        unchanged = fill_missing_plan_metadata(plan_csv, "CUST-OTHER", "PROD-OTHER", "other-op")
+        if unchanged != 0:
+            raise AssertionError(f"expected no overwrite, got {unchanged} changed rows")
+
+
 def main() -> int:
     test_operator_console()
     print("PASS test_operator_console")
@@ -320,7 +363,9 @@ def main() -> int:
     print("PASS test_workbench_prepare_tasks")
     test_generated_plan_uses_rpa_work()
     print("PASS test_generated_plan_uses_rpa_work")
-    print("RPA operator console self-test passed: 4 groups")
+    test_fill_missing_plan_metadata()
+    print("PASS test_fill_missing_plan_metadata")
+    print("RPA operator console self-test passed: 5 groups")
     return 0
 
 

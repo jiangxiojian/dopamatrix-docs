@@ -9,6 +9,7 @@ manual operator action.
 from __future__ import annotations
 
 import argparse
+import csv
 import socket
 import threading
 import time
@@ -39,6 +40,44 @@ def find_free_port(host: str = "127.0.0.1") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind((host, 0))
         return int(sock.getsockname()[1])
+
+
+def fill_missing_plan_metadata(plan_csv: Path, client_id: str = "", product_id: str = "", operator: str = "") -> int:
+    updates = {
+        "client_id": client_id.strip(),
+        "product_id": product_id.strip(),
+        "operator": operator.strip(),
+    }
+    updates = {key: value for key, value in updates.items() if value}
+    if not updates:
+        return 0
+
+    with plan_csv.open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = list(reader.fieldnames or [])
+        rows = [{key: value or "" for key, value in row.items()} for row in reader]
+    if not rows:
+        return 0
+    for key in updates:
+        if key not in fieldnames:
+            fieldnames.append(key)
+
+    changed = 0
+    for row in rows:
+        row_changed = False
+        for key, value in updates.items():
+            if not (row.get(key) or "").strip():
+                row[key] = value
+                row_changed = True
+        if row_changed:
+            changed += 1
+    if not changed:
+        return 0
+    with plan_csv.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    return changed
 
 
 class PublisherLauncher(tk.Tk):
@@ -269,6 +308,9 @@ class PublisherLauncher(tk.Tk):
     def create_plan_if_needed(self, root: Path, delivery_csv: Path, ledger_csv: Path) -> Path:
         plan_csv = existing_delivery_plan_path(root)
         if plan_csv:
+            updated_count = self.fill_missing_plan_metadata(plan_csv)
+            if updated_count:
+                self.status.set(f"已更新已有计划表的客户/产品信息：{updated_count} 行。")
             return plan_csv
         plan_csv = default_delivery_plan_path(root)
         argv = [
@@ -292,6 +334,14 @@ class PublisherLauncher(tk.Tk):
         if result != 0 or not plan_csv.is_file():
             raise RuntimeError("发布计划生成失败，请检查投放包文件和账号台账。")
         return plan_csv
+
+    def fill_missing_plan_metadata(self, plan_csv: Path) -> int:
+        return fill_missing_plan_metadata(
+            plan_csv,
+            client_id=self.client_id.get(),
+            product_id=self.product_id.get(),
+            operator=self.operator.get(),
+        )
 
     def start_workbench_for_plan(self, plan_csv: Path) -> None:
         if self.server_started:

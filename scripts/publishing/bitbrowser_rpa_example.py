@@ -795,6 +795,10 @@ def _post_candidate_score(source: str, tab_url: str) -> int:
         "text:facebook_public_url": 230,
         "text:facebook_business_content_id": 225,
     }.get(key, 150)
+    if key == "text:tiktok_item_id":
+        # Raw item_id/video_id values appear in Studio history and page state.
+        # Keep them for diagnostics, but never let them outrank public links.
+        score = 20
     if "business_content_id" in key:
         score = max(score, 225)
     tab_url_lower = tab_url.lower()
@@ -918,6 +922,13 @@ def tiktok_public_url_from_parts(scheme: str, netloc: str, path: str, query: str
     if username:
         return f"https://www.tiktok.com/@{username}/video/{post_id}"
     return f"https://www.tiktok.com/player/v1/{post_id}"
+
+
+def tiktok_public_url_has_username(url: str) -> bool:
+    scheme, netloc, path, _query = _candidate_url_parts(url)
+    if "tiktok.com" not in netloc:
+        return False
+    return bool(re.search(r"/@[^/?#]+/(?:video|photo)/\d+", path, re.IGNORECASE))
 
 
 def extract_platform_post_id(url: str, platform: str) -> str:
@@ -1047,6 +1058,7 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
     candidates: list[dict[str, Any]] = []
 
     def add_candidate(url: str, source: str, text: str = "") -> None:
+        original_tiktok_public_url = platform_key == "tiktok" and tiktok_public_url_has_username(url)
         if platform_key == "facebook":
             business_candidate = facebook_business_content_candidate(
                 url,
@@ -1061,6 +1073,11 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
         post_id = extract_platform_post_id(normalized, platform_key)
         if not post_id:
             return
+        source_key = source.strip().lower()
+        diagnostic_only = platform_key == "tiktok" and source_key == "text:tiktok_item_id"
+        auto_write_safe = True
+        if platform_key == "tiktok":
+            auto_write_safe = original_tiktok_public_url and not diagnostic_only
         candidate = {
             "post_url": normalized,
             "platform_post_id": post_id,
@@ -1069,6 +1086,8 @@ def collect_post_url_candidates(page: Any, platform: str, tab_index: int) -> lis
             "tab_url": tab_url,
             "text": text.strip()[:160],
             "score": _post_candidate_score(source, tab_url),
+            "diagnostic_only": diagnostic_only,
+            "auto_write_safe": auto_write_safe,
         }
         candidates.append(candidate)
 
@@ -1178,7 +1197,70 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
             )
 
     scanner_errors = [item for item in candidates if str(item.get("source", "")).startswith("error:")]
-    viable = [item for item in candidates if item.get("post_url") and item.get("platform_post_id")]
+    post_candidates = [item for item in candidates if item.get("post_url") and item.get("platform_post_id")]
+    if platform_key == "tiktok":
+        post_candidates.sort(key=lambda item: _post_candidate_sort_key(item, platform_key, checked_at_dt))
+        post_ids = sorted({str(item.get("platform_post_id", "")) for item in post_candidates if item.get("platform_post_id")})
+        safe_candidates = [
+            item
+            for item in post_candidates
+            if item.get("auto_write_safe") and not item.get("diagnostic_only")
+        ]
+        if len(post_ids) > 1:
+            return {
+                "detected": False,
+                "checked_at": checked_at,
+                "platform": platform_key,
+                "post_url": "",
+                "platform_post_id": "",
+                "published_at": "",
+                "source": "",
+                "tab_index": 0,
+                "tab_url": "",
+                "text": "",
+                "candidate_count": len(post_candidates),
+                "candidate_sources": sorted({str(item.get("source", "")) for item in post_candidates if item.get("source")}),
+                "scanned_tab_count": len(scanned_tabs),
+                "scanner_error_count": len(scanner_errors),
+                "scanner_errors": scanner_errors[:5],
+                "candidates": post_candidates[:10],
+                "scanned_tabs": scanned_tabs,
+                "conflicting_post_ids": post_ids,
+                "error_type": "POST_URL_CONFLICT",
+                "error_message": (
+                    "Multiple TikTok post IDs were found in the current BitBrowser tabs. "
+                    "The script refused to auto-write a URL because an old video tab may be mixed in."
+                ),
+            }
+        if post_candidates and not safe_candidates:
+            best = post_candidates[0]
+            return {
+                "detected": False,
+                "checked_at": checked_at,
+                "platform": platform_key,
+                "post_url": "",
+                "platform_post_id": "",
+                "published_at": "",
+                "source": best.get("source", ""),
+                "tab_index": best.get("tab_index", 0),
+                "tab_url": best.get("tab_url", ""),
+                "text": best.get("text", ""),
+                "candidate_count": len(post_candidates),
+                "candidate_sources": sorted({str(item.get("source", "")) for item in post_candidates if item.get("source")}),
+                "scanned_tab_count": len(scanned_tabs),
+                "scanner_error_count": len(scanner_errors),
+                "scanner_errors": scanner_errors[:5],
+                "candidates": post_candidates[:10],
+                "scanned_tabs": scanned_tabs,
+                "error_type": "TIKTOK_POST_URL_NOT_PUBLIC",
+                "error_message": (
+                    "Only TikTok Studio/item_id/player candidates were found. "
+                    "Open the public @username/video link or paste the URL manually before writing back."
+                ),
+            }
+        viable = safe_candidates
+    else:
+        viable = post_candidates
     if platform_key == "facebook":
         for item in viable:
             delta_seconds = _facebook_candidate_time_delta_seconds(
@@ -1207,6 +1289,7 @@ def detect_post_url_in_context(context: Any, platform: str) -> dict[str, Any]:
         "scanner_errors": scanner_errors[:5],
         "candidates": viable[:10],
         "scanned_tabs": scanned_tabs,
+        "auto_write_safe": bool(best.get("auto_write_safe")) if viable else False,
     }
     return best_result
 
@@ -2689,8 +2772,11 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
         return "FIX_MEDIA"
     if error_key == "PLATFORM_RATE_LIMIT_OR_RESTRICTION":
         return "PAUSE_ACCOUNT"
+    if error_key == "POST_URL_CONFLICT":
+        return "HUMAN_REVIEW"
     if error_key in {
         "POST_URL_NOT_FOUND",
+        "TIKTOK_POST_URL_NOT_PUBLIC",
         "FACEBOOK_FILE_CHOOSER_TIMEOUT",
         "TIKTOK_UPLOAD_NOT_CONFIRMED",
         "FACEBOOK_UPLOAD_NOT_CONFIRMED",
@@ -3515,16 +3601,20 @@ def detect_post_url_for_plan(args: argparse.Namespace) -> int:
     try:
         pw, browser, context = connect_browser_context(opened.cdp_url)
         result = detect_post_url_in_context(context, platform)
-        result["detection_status"] = "POST_URL_DETECTED" if result.get("detected") else "POST_URL_NOT_FOUND"
         result["status"] = plan_entry.status or "PREPARED"
         if result.get("detected") and args.detect_write_back:
             result["status"] = "PUBLISHED_MANUAL"
         if result.get("detected"):
+            result["detection_status"] = "POST_URL_DETECTED"
             result["error_action"] = recommend_error_action("", "PUBLISHED_MANUAL")
         else:
-            result["error_type"] = "POST_URL_NOT_FOUND"
-            result["error_action"] = recommend_error_action("POST_URL_NOT_FOUND", result["status"])
-            result["error_message"] = "No public post URL was found in the current BitBrowser tabs."
+            result["error_type"] = str(result.get("error_type") or "POST_URL_NOT_FOUND")
+            result["detection_status"] = result["error_type"]
+            result["error_action"] = recommend_error_action(result["error_type"], result["status"])
+            result["error_message"] = str(
+                result.get("error_message")
+                or "No public post URL was found in the current BitBrowser tabs."
+            )
         result["error_action_label"] = describe_error_action(str(result.get("error_action") or ""))
         payload = {
             "plan": {
