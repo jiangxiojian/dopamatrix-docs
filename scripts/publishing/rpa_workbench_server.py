@@ -43,6 +43,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
     update_publish_plan_row,
     write_summary_csv,
 )
+from bitbrowser_rpa_example import main as publisher_main  # noqa: E402
 from rpa_report_export import (  # noqa: E402
     DEFAULT_DETAIL as DEFAULT_CUSTOMER_REPORT_DETAIL,
     DEFAULT_OVERVIEW as DEFAULT_CUSTOMER_REPORT_OVERVIEW,
@@ -412,6 +413,59 @@ class WorkbenchState:
             "customer_report_url": self.artifact_url(str(output)),
         }
 
+    def prepare_tasks(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Prepare selected READY tasks without clicking the final publish button."""
+        selected = body.get("publish_ids") or []
+        if isinstance(selected, str):
+            selected = [item.strip() for item in selected.split(",") if item.strip()]
+        if not isinstance(selected, list):
+            raise WorkbenchError("publish_ids must be a list.")
+        selected = [clean_text(item) for item in selected if clean_text(item)]
+        if not selected:
+            raise WorkbenchError("Select at least one task to prepare.")
+
+        requested = {item for item in selected}
+        plan_rows = [normalize_plan_row(row, self.config.plan_csv) for row in read_csv_rows(self.config.plan_csv)]
+        available = {
+            row.get("publish_id", "")
+            for row in plan_rows
+            if row.get("publish_id", "") in requested
+            and (row.get("status", "READY") or "READY").upper() in {"READY", "FAILED", "PARTIAL"}
+        }
+        missing = sorted(requested - available)
+        if missing:
+            raise WorkbenchError("Tasks are not READY/FAILED/PARTIAL: " + ", ".join(missing))
+
+        argv = [
+            "--plan-csv",
+            str(self.config.plan_csv),
+            "--only-publish-id",
+            ",".join(sorted(available)),
+            "--include-status",
+            "READY,FAILED,PARTIAL",
+            "--continue-on-error",
+            "--write-plan-status",
+            "--tab-mode",
+            "new",
+            "--facebook-upload-mode",
+            "auto",
+            "--log-jsonl",
+            str(self.config.log_jsonl),
+            "--bit-api",
+            self.config.bit_api,
+            "--account-ledger",
+            str(self.config.account_ledger_csv),
+        ]
+        if self.config.operator:
+            argv.extend(["--plan-operator", self.config.operator])
+        exit_code = publisher_main(argv)
+        return {
+            "prepared": len(available),
+            "publish_ids": sorted(available),
+            "exit_code": exit_code,
+            "message": "草稿准备完成，请检查打开的 TK/FB 页面后手动点击最终发布。",
+        }
+
     def resolve_artifact(self, path_text: str) -> Path:
         if not path_text:
             raise WorkbenchError("path is required.")
@@ -477,6 +531,11 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     return body
 
 
+def safe_print(text: str = "") -> None:
+    if sys.stdout:
+        print(text)
+
+
 def render_page(title: str = "RPA 确认工作台") -> str:
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -507,6 +566,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     .stat {{ min-width: 110px; padding: 8px 10px; border: 1px solid var(--line); background: var(--panel); }}
     .stat strong {{ display: block; font-size: 19px; }}
     .toolbar {{ padding: 12px 22px; border-bottom: 1px solid var(--line); }}
+    .selection {{ display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }}
     input, select, textarea, button {{ font: inherit; }}
     input, select, textarea {{ border: 1px solid var(--line); padding: 8px; background: #fff; color: var(--ink); }}
     input[type="search"] {{ width: min(520px, 100%); }}
@@ -521,6 +581,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     .empty-shot {{ color: var(--muted); font-size: 13px; }}
     .task-main {{ padding: 14px; min-width: 0; }}
     .task-head {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }}
+    .task-select {{ width: 18px; height: 18px; accent-color: var(--blue); }}
     .badge {{ border: 1px solid var(--line); padding: 3px 7px; font-weight: 700; }}
     .badge.ok {{ color: var(--ok); border-color: #9dd8bd; background: #ecfdf3; }}
     .badge.bad {{ color: var(--bad); border-color: #fecdca; background: #fff1f3; }}
@@ -557,6 +618,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     <select id="statusFilter"><option value="ALL">全部状态</option></select>
     <select id="platformFilter"><option value="ALL">全部平台</option></select>
     <select id="actionFilter"><option value="ALL">全部建议</option></select>
+    <label class="selection"><input type="checkbox" id="selectVisible">选择当前列表</label>
+    <button id="prepareSelected" class="primary">准备选中草稿</button>
     <button id="reload" class="soft">刷新</button>
     <button id="exportSummary" class="soft">导出汇总 CSV</button>
     <button id="exportReport" class="soft">导出客户报告种子</button>
@@ -572,6 +635,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     const statusFilter = document.querySelector('#statusFilter');
     const platformFilter = document.querySelector('#platformFilter');
     const actionFilter = document.querySelector('#actionFilter');
+    const selectVisible = document.querySelector('#selectVisible');
 
     function esc(value) {{
       return String(value || '').replace(/[&<>"']/g, (ch) => ({{
@@ -687,6 +751,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
             <div class="shot">${{shot}}</div>
             <div class="task-main">
               <div class="task-head">
+                <input class="task-select" type="checkbox" data-select="${{publishId}}" ${{['READY', 'FAILED', 'PARTIAL'].includes(String(status).toUpperCase()) ? '' : 'disabled'}}>
                 <span class="badge ${{badgeClass(status)}}">${{esc(status)}}</span>
                 <span>${{esc(task.platform)}}</span>
                 <span>${{esc(task.content_type)}}</span>
@@ -868,6 +933,30 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       }}
     }});
     document.querySelector('#reload').addEventListener('click', () => load().catch((error) => toast(error.message, true)));
+    selectVisible.addEventListener('change', () => {{
+      document.querySelectorAll('input[data-select]:not(:disabled)').forEach((checkbox) => {{
+        checkbox.checked = selectVisible.checked;
+      }});
+    }});
+    document.querySelector('#prepareSelected').addEventListener('click', async () => {{
+      const publishIds = [...document.querySelectorAll('input[data-select]:checked')]
+        .map((checkbox) => checkbox.dataset.select)
+        .filter(Boolean);
+      if (!publishIds.length) {{
+        toast('请先选择 READY、失败或部分成功任务', true);
+        return;
+      }}
+      try {{
+        const result = await api('/api/prepare', {{
+          method: 'POST',
+          body: JSON.stringify({{ publish_ids: publishIds }})
+        }});
+        toast(`${{result.message}} 已处理 ${{result.prepared}} 条`);
+        await load();
+      }} catch (error) {{
+        toast(error.message || String(error), true);
+      }}
+    }});
     document.querySelector('#exportSummary').addEventListener('click', async () => {{
       try {{
         const result = await api('/api/export-summary', {{ method: 'POST', body: JSON.stringify({{ include_history: false }}) }});
@@ -910,7 +999,8 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
     state: WorkbenchState
 
     def log_message(self, format: str, *args: Any) -> None:
-        sys.stderr.write("[workbench] " + format % args + "\n")
+        if sys.stderr:
+            sys.stderr.write("[workbench] " + format % args + "\n")
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -948,6 +1038,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/detect-post-url":
                 json_response(self, self.state.detect_post_url(body))
+                return
+            if parsed.path == "/api/prepare":
+                json_response(self, self.state.prepare_tasks(body))
                 return
             if parsed.path == "/api/export-summary":
                 include_history = bool(body.get("include_history"))
@@ -1038,15 +1131,15 @@ def run_server(args: argparse.Namespace) -> int:
     Handler.state = state
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}/"
-    print(f"RPA confirmation workbench: {url}")
-    print(f"Plan CSV: {config.plan_csv}")
-    print("Press Ctrl+C to stop.")
+    safe_print(f"RPA confirmation workbench: {url}")
+    safe_print(f"Plan CSV: {config.plan_csv}")
+    safe_print("Press Ctrl+C to stop.")
     if config.open_browser:
         webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nWorkbench stopped.")
+        safe_print("\nWorkbench stopped.")
     finally:
         server.server_close()
     return 0

@@ -2,7 +2,7 @@
 
 > 更新时间：2026-08-21  
 > 文档类型：使用说明  
-> 状态：草案  
+> 状态：实施中
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
 
 ## 这套脚本做什么
@@ -24,6 +24,18 @@
 - 不会绕过验证码、人脸或安全验证
 - 不会自动点击最终发布
 - 不会代替人工判断 Page 是否正确
+
+## 普通运营怎么打开
+
+现在已经有一个图形化启动入口，不必先记命令：
+
+1. 优先双击 `scripts/publishing/dist/DopaMatrixPublisher/DopaMatrixPublisher.exe`（打包后产物）。
+2. 如果还没有打包产物，双击 `scripts/publishing/run_dopamatrix_publisher.cmd`。
+3. 在窗口里选择投放包文件夹，再点击“生成计划并打开操作台”。
+
+普通运营只需要在操作台里选择任务、准备草稿、人工确认发布和回填结果。Python、CSV 字段和命令行参数属于维护人员使用范围。
+
+纯文本版操作说明见：[15-rpa-operator-quickstart.txt](./15-rpa-operator-quickstart.txt)。
 
 ## 推荐使用顺序
 
@@ -47,6 +59,8 @@
 - `矩阵投放文案对照表.csv`
 - 素材文件
 - Python + Playwright
+
+其中 Python + Playwright 只是在尚未打包的开发/维护机器上需要；交给普通运营时，应提供完整的 `DopaMatrixPublisher` 打包文件夹。
 
 建议先安装：
 
@@ -132,6 +146,14 @@ python .\scripts\publishing\rpa_workbench_server.py `
   --open-browser
 ```
 
+### 图形化启动入口
+
+```powershell
+python .\scripts\publishing\dopa_matrix_publisher.py
+```
+
+图形入口会选择投放包、自动生成 `publish_plan.csv`，并打开确认工作台。工作台中的“准备选中草稿”会调用已有发布器，默认新开任务 Tab、使用 Facebook `auto` 上传策略、写日志和回写状态，仍停在最终发布按钮前。
+
 ### 跑本地回归
 
 ```powershell
@@ -181,3 +203,4 @@ python .\scripts\publishing\rpa_selftest.py
 2. 每次真实跑批前，最好先跑 `--print-plan`。
 3. `publish_plan.csv` 是任务源，`publish_logs.jsonl` 是结果源，报告只是视图。
 4. FB 视频/Reels 只有在入口 URL 已经人工确认时才建议启用。
+5. 当前图形入口已完成源码级和离线自测；`exe` 需要在目标 Windows 机器上完成一次打包和实机验证后再交给普通运营。

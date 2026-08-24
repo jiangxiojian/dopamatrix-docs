@@ -1,6 +1,6 @@
 # RPA 发布前准备清单与模板
 
-> 更新时间：2026-08-21  
+> 更新时间：2026-08-24  
 > 文档类型：准备清单  
 > 状态：草案
 
@@ -18,8 +18,8 @@
 | 平台账号已登录 | 是 | TK / FB Page 账号先登录好。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
 | 代理已配置 | 是 | 环境要绑定可用代理。 | 账号台账里记录代理地区和供应商 |
 | `账号环境台账.csv` | 是 | 记录账号键、窗口 ID 和默认处理方式。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
-| `矩阵投放文案对照表.csv` | 是 | 交付 CSV，供脚本匹配素材和文案。 | 本文模板 |
-| 素材目录 | 是 | `videos/`、`images/` 或实际素材目录。 | 见下方目录结构 |
+| `矩阵投放文案对照表.csv` | 是 | 一次投放的文案、标签和追踪短链对照表。 | 本文模板 |
+| 素材目录 | 是 | 存放视频、图片和必要的封面。 | 见下方目录结构 |
 | `publish_plan.csv` | 否 | 可以手工准备，也可以让脚本自动生成。 | [11-publish-data-schema.md](./11-publish-data-schema.md) |
 | Facebook 入口 URL | 视情况 | FB 视频/Reels/快拍建议手工确认入口再填。 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) |
 | 输出目录 | 是 | 用来放日志、汇总、截图和报告。 | 例如 `E:\project\dopaMatrix\output\publish-rpa\` |
@@ -37,6 +37,33 @@ delivery-package/
   publish_plan.csv
   publish_logs.jsonl
 ```
+
+真实投放包例子：
+
+```text
+E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
+```
+
+## 客户 ID 和产品 ID 怎么填
+
+`客户 ID` 和 `产品 ID` 是 DopaMatrix 自己的运营归因字段，不是 TikTok / Facebook 的账号 ID。
+
+设计它们的初衷是：
+
+1. 发布后能按客户筛选报告。
+2. 同一个客户有多个产品或活动时，能分开统计。
+3. 一条帖子、一个素材、一条询盘能回查到客户和产品。
+4. 后面做客户报告、归因、复盘和爆款基因分析时，不靠人工猜。
+
+来源可以是：
+
+| 字段 | 推荐来源 | 示例 |
+| --- | --- | --- |
+| `客户 ID` | 客户台账、合同编号、CRM 编号、内部项目编号 | `CUST-ACME-001`、`HT202608-003` |
+| `产品 ID` | 产品台账、SKU、活动编号、投放项目编号 | `PROD-TOILET-A01`、`CAMPAIGN-SG-0824` |
+
+脚本目前不会校验它们的格式，所以填 `1234` 也能运行。  
+但正式使用不建议随手填，因为后续报告和回查会很难看懂。建议从第一天就用稳定、有含义、不会重复的编号。
 
 ## `矩阵投放文案对照表.csv` 模板
 

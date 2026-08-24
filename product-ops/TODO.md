@@ -46,6 +46,8 @@
 | P1 | RPA 操作台/工作台自测 | 完成基础版 | `rpa_operator_console_selftest.py` 可离线检查操作台处理建议筛选、回填命令和确认工作台筛选 UI。 |
 | P1 | 脚本使用说明 | 完成基础版 | `13-rpa-script-runbook.md` 把常用命令、运行顺序、输出物和常见问题收敛成操作手册。 |
 | P1 | 手工准备清单与模板 | 完成基础版 | `14-rpa-preflight-checklist.md` 列出发布前要人工准备的东西，并附交付 CSV 模板。 |
+| P1 | 普通运营图形入口 | 完成基础版 | `dopa_matrix_publisher.py` 可选择投放包、生成计划并打开工作台；工作台可勾选任务后直接准备草稿。 |
+| P1 | Windows exe 打包 | 进行中 | `build_publisher.cmd` 已提供 PyInstaller 打包流程；还需在目标 Windows 机器上验证依赖、BitBrowser CDP 和文件上传。 |
 | P2 | RPA 操作台增强为确认工作台 | 完成 MVP | 本地工作台可在页面写回状态、记录账号健康备注、选择失败重试为 READY，并导出汇总 CSV。 |
 | P1 | 补 Facebook Page 视频/Reels 测试 | 完成基础版 | 2026-08-17 已实机验证 1 条真实视频/Reels 草稿准备；脚本会等到媒体处理确认后再写回 `PREPARED`，且不会点击最终发布。 |
 | P1 | 拆分平台发布器并细化异常分类 | 完成基础版 | 已新增 `TikTokPublisher` / `FacebookPublisher` 注册表，并补平台级上传、caption、FB Page 权限和 file chooser 超时分类。 |

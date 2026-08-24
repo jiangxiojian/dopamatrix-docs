@@ -10,6 +10,16 @@
 
 - 新增 [13-rpa-script-runbook.md](./13-rpa-script-runbook.md)，把脚本的运行顺序、常用命令、输出物和常见问题整理成操作手册。
 - 新增 [14-rpa-preflight-checklist.md](./14-rpa-preflight-checklist.md)，列出发布前人工要准备的账号、素材、环境和文件，并给出交付 CSV 模板。
+- 新增 `scripts/publishing/dopa_matrix_publisher.py` 图形化启动入口，普通运营可以选择投放包、自动生成计划并打开本地操作台。
+- RPA 确认工作台新增“选择任务并准备草稿”流程；默认使用新 Tab、Facebook `auto` 上传策略，并停在最终发布按钮前。
+- 新增 `run_dopamatrix_publisher.cmd`、`build_publisher.cmd`、`requirements.txt`，用于开发机启动和 PyInstaller Windows 打包。
+- 新增 [15-rpa-operator-quickstart.txt](./15-rpa-operator-quickstart.txt)，提供不依赖 Markdown 工具的普通运营快速说明。
+
+### Verified
+
+- 在 Windows 10 + Python 3.10.6 + PyInstaller 6.20.0 环境成功生成 `dist/DopaMatrixPublisher/DopaMatrixPublisher.exe` 及其完整依赖目录；该打包目录未纳入 Git。
+- Python 语法检查、RPA URL/报告/操作台/弹窗稳定性离线自测全部通过，其中新增“选择任务并准备草稿”参数链自测通过。
+- 目标运营电脑上的首次 GUI 启动、BitBrowser CDP 连接和真实上传仍需单独验收；当前不会把这一步伪装成已完成。
 
 ## 2026-08-20
 

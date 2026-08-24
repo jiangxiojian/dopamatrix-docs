@@ -6,13 +6,14 @@ import csv
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from rpa_operator_console import generate_console  # noqa: E402
-from rpa_workbench_server import render_page  # noqa: E402
+from rpa_workbench_server import WorkbenchConfig, WorkbenchState, render_page  # noqa: E402
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
@@ -149,6 +150,9 @@ def test_operator_console() -> None:
 
 def test_workbench_markup() -> None:
     html = render_page()
+    assert_contains(html, "准备选中草稿", "workbench prepare button")
+    assert_contains(html, "data-select=", "workbench task selection")
+    assert_contains(html, "/api/prepare", "workbench prepare endpoint")
     assert_contains(html, 'id="actionFilter"', "workbench action select")
     assert_contains(html, "全部建议", "workbench action label")
     assert_contains(html, "candidate_count", "workbench diagnostic search text")
@@ -158,12 +162,80 @@ def test_workbench_markup() -> None:
     assert_contains(html, "actionFilter.addEventListener('change', renderTasks);", "workbench change listener")
 
 
+def test_workbench_prepare_tasks() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        plan_csv = root / "publish_plan.csv"
+        ledger_csv = root / "账号环境台账.csv"
+        write_csv(
+            plan_csv,
+            ["publish_id", "platform", "status", "account_key", "media_path"],
+            [
+                {
+                    "publish_id": "PUB-READY",
+                    "platform": "tiktok",
+                    "status": "READY",
+                    "account_key": "tk_test",
+                    "media_path": "video.mp4",
+                },
+                {
+                    "publish_id": "PUB-REJECTED",
+                    "platform": "facebook",
+                    "status": "REJECTED_MANUAL",
+                    "account_key": "fb_test",
+                    "media_path": "image.jpg",
+                },
+            ],
+        )
+        write_csv(ledger_csv, ["account_key", "platform", "profile_id"], [])
+        config = WorkbenchConfig(
+            plan_csv=plan_csv,
+            log_jsonl=root / "publish_logs.jsonl",
+            summary_csv=root / "publish_summary.csv",
+            customer_report_detail_csv=root / "customer_report_seed.csv",
+            customer_report_overview_csv=root / "customer_report_overview.csv",
+            customer_report_html=root / "customer_report.html",
+            account_health_csv=root / "rpa_account_health.csv",
+            account_ledger_csv=ledger_csv,
+            bit_api="http://127.0.0.1:54345",
+            operator="tester",
+        )
+        state = WorkbenchState(config)
+        captured: list[list[str]] = []
+
+        def fake_publisher_main(argv: list[str]) -> int:
+            captured.append(argv)
+            return 0
+
+        with patch("rpa_workbench_server.publisher_main", fake_publisher_main):
+            result = state.prepare_tasks({"publish_ids": ["PUB-READY"]})
+
+        if result["exit_code"] != 0 or result["prepared"] != 1:
+            raise AssertionError(f"unexpected prepare result: {result}")
+        argv = captured[0]
+        for needle in [
+            "--only-publish-id",
+            "PUB-READY",
+            "--write-plan-status",
+            "--tab-mode",
+            "new",
+            "--facebook-upload-mode",
+            "auto",
+            "--account-ledger",
+            str(ledger_csv),
+        ]:
+            if needle not in argv:
+                raise AssertionError(f"prepare argv missing {needle!r}: {argv}")
+
+
 def main() -> int:
     test_operator_console()
     print("PASS test_operator_console")
     test_workbench_markup()
     print("PASS test_workbench_markup")
-    print("RPA operator console self-test passed: 2 groups")
+    test_workbench_prepare_tasks()
+    print("PASS test_workbench_prepare_tasks")
+    print("RPA operator console self-test passed: 3 groups")
     return 0
 
 

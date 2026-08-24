@@ -6,3 +6,9 @@ __pycache__/
 *.tmp
 *.bak
 ~$*
+/build/
+/dist/
+/DopaMatrixPublisher.spec
+scripts/publishing/build/
+scripts/publishing/dist/
+scripts/publishing/DopaMatrixPublisher.spec

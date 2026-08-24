@@ -45,6 +45,7 @@ DopaMatrix 当前已经具备内容工厂底座：本地 DAM、Story DSL、FFmpe
 | 13 | [13-rpa-script-runbook.md](./13-rpa-script-runbook.md) | 脚本的实际操作手册和常用命令。 |
 | 14 | [14-rpa-preflight-checklist.md](./14-rpa-preflight-checklist.md) | 发布前手工准备清单和交付 CSV 模板。 |
 | 15 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
+| 16 | [15-rpa-operator-quickstart.txt](./15-rpa-operator-quickstart.txt) | 给普通运营打开即看的纯文本操作说明，不要求 Markdown 工具。 |
 
 ## 事项清单覆盖关系
 
