@@ -8,13 +8,14 @@ the main DopaMatrix application, a database, or a web server.
 from __future__ import annotations
 
 import argparse
-import csv
 import html
 import json
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from rpa_csv import read_csv_rows as read_validated_csv_rows
 
 
 DEFAULT_DETAIL = "customer_report_seed.csv"
@@ -83,9 +84,7 @@ def clean_text(value: Any) -> str:
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         raise FileNotFoundError(f"CSV not found: {path}")
-    with path.open("r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        return [{str(k): clean_text(v) for k, v in row.items()} for row in reader]
+    return read_validated_csv_rows(path)
 
 
 def to_int(value: str) -> int:

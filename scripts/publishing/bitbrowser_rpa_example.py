@@ -47,14 +47,17 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 import requests
+
+from rpa_csv import CSVFormatError, read_csv_rows, read_csv_table
 
 
 DEFAULT_BIT_API = "http://127.0.0.1:54345"
@@ -301,6 +304,13 @@ SUMMARY_PLAN_COLUMNS = {
 }
 PLAN_STATUS_COLUMNS = {
     "publish_id": ("发布ID", "id"),
+    "account_key": ("账号键", "account_code"),
+    "profile_id": ("browser_profile_id", "窗口ID", "browser_id"),
+    "profile_name": ("窗口名称",),
+    "title": ("标题", "社交平台标题"),
+    "caption": ("文案", "description", "情绪化描述"),
+    "hashtags": ("标签", "黄金标签"),
+    "tracking_url": ("tracking_link", "追踪短链接", "url"),
     "status": ("状态",),
     "last_result_status": ("最后结果状态",),
     "last_result_at": ("最后结果时间",),
@@ -437,7 +447,7 @@ def ready_publish_plan_candidates(candidates: list[Path]) -> list[tuple[Path, in
     for candidate in candidates:
         try:
             ready_count = sum(1 for entry in load_publish_plan(candidate) if entry.is_ready())
-        except (OSError, BitBrowserError, UnicodeError):
+        except (OSError, BitBrowserError, UnicodeError, CSVFormatError):
             continue
         if ready_count:
             ready_candidates.append((candidate, ready_count))
@@ -1836,13 +1846,9 @@ def update_publish_plan_row(
     publish_id: str,
     updates: dict[str, str],
 ) -> dict[str, str]:
-    rows = _read_csv_rows(csv_path)
+    fieldnames, rows = read_csv_table(csv_path)
     if not rows:
         raise BitBrowserError(f"Publish plan is empty: {csv_path}")
-
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        fieldnames = list(reader.fieldnames or [])
 
     publish_id_column = _resolve_csv_column(fieldnames, "publish_id")
     if publish_id_column not in fieldnames:
@@ -1928,9 +1934,7 @@ def configure_utf8_stdio() -> None:
 
 
 def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+    return read_csv_rows(csv_path)
 
 
 def load_delivery_records(csv_path: Path) -> list[DeliveryRecord]:
@@ -1973,30 +1977,7 @@ def resolve_path_maybe_relative(path_text: str, base_dir: Path) -> Path:
 
 def load_delivery_record(csv_path: Path, media_path: Path) -> DeliveryRecord:
     records = load_delivery_records(csv_path)
-
-    media_name = media_path.name
-    matched = None
-    for record in records:
-        if record.video_filename == media_name:
-            matched = record
-            break
-
-    if matched is None:
-        if len(records) == 1:
-            matched = records[0]
-        else:
-            available = ", ".join(
-                record.video_filename or "<empty>"
-                for record in records[:10]
-            )
-            raise BitBrowserError(
-                "No delivery CSV row matched the media filename. "
-                f"media={media_name}, csv={csv_path}, sample_rows={available}"
-            )
-
-    if not matched.video_filename:
-        matched.video_filename = media_name
-    return matched
+    return record_for_media(records, media_path)
 
 
 def load_account_ledger(csv_path: Path) -> list[AccountLedgerEntry]:
@@ -2311,12 +2292,64 @@ def resolve_account_ledger_for_generation(delivery_dir: Path, explicit_csv: str 
 
 
 def record_for_media(records: list[DeliveryRecord], media_path: Path) -> DeliveryRecord:
-    for record in records:
-        if record.video_filename == media_path.name:
-            return record
-    if len(records) == 1:
-        return records[0]
-    return DeliveryRecord(video_filename=media_path.name)
+    matches = [record for record in records if record.video_filename == media_path.name]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise BitBrowserError(f"文案表中素材文件名重复：{media_path.name}。请保留唯一对应行。")
+    raise BitBrowserError(f"文案表中没有与素材文件名匹配的行：{media_path.name}。请补齐对应文案和标签。")
+
+
+def refresh_plan_delivery_copy(plan_path: Path, publish_ids: list[str]) -> int:
+    package_root = plan_path.parent.parent if plan_path.parent.name == DEFAULT_WORK_DIRNAME else plan_path.parent
+    delivery_csv = package_root / DEFAULT_DELIVERY_CSV_FILENAME
+    if not delivery_csv.is_file():
+        return 0
+    records = load_delivery_records(delivery_csv)
+    entries = load_publish_plan(plan_path)
+    wanted = set(publish_ids)
+    updates = {}
+    for entry in entries:
+        if entry.publish_id not in wanted or (entry.status or "READY").upper() not in {"READY", "FAILED", "PARTIAL"}:
+            continue
+        media_path = resolve_path_maybe_relative(entry.media_path, plan_path.parent)
+        record = record_for_media(records, media_path)
+        if not any((record.social_title.strip(), record.emotional_description.strip(), record.hashtags.strip())):
+            raise BitBrowserError(f"素材 {media_path.name} 的文案和标签均为空，请先补齐文案表。")
+        updates[entry.publish_id] = {
+            "title": record.social_title, "caption": record.emotional_description,
+            "hashtags": record.hashtags, "tracking_url": record.tracking_link,
+        }
+    # Validate the entire selection before changing any plan rows.
+    fieldnames, rows = read_csv_table(plan_path)
+    id_column = _resolve_csv_column(fieldnames, "publish_id")
+    column_map = {key: _resolve_csv_column(fieldnames, key)
+                  for key in ("title", "caption", "hashtags", "tracking_url")}
+    changed = 0
+    for row in rows:
+        values = updates.get(row.get(id_column, "").strip())
+        if values is None:
+            continue
+        if any(row.get(column_map[key], "") != value for key, value in values.items()):
+            row.update({column_map[key]: value for key, value in values.items()})
+            changed += 1
+    if changed:
+        for column in column_map.values():
+            if column not in fieldnames:
+                fieldnames.append(column)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="", dir=plan_path.parent,
+                                             prefix=plan_path.name + ".", suffix=".tmp", delete=False) as fh:
+                temporary_path = Path(fh.name)
+                writer = csv.DictWriter(fh, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            temporary_path.replace(plan_path)
+        finally:
+            if temporary_path and temporary_path.exists():
+                temporary_path.unlink()
+    return changed
 
 
 def collect_generation_media(
@@ -2332,7 +2365,7 @@ def collect_generation_media(
             if record.video_filename and find_media_by_name(delivery_dir, record.video_filename, IMAGE_EXTENSIONS) is None:
                 warnings.append(f"Delivery CSV row has no matching media file: {record.video_filename}")
             continue
-        videos.append((media_path, record))
+        videos.append((media_path, record_for_media(records, media_path)))
         used_video_paths.add(media_path)
 
     for media_path in scan_media_files(delivery_dir, VIDEO_EXTENSIONS):
@@ -2863,16 +2896,32 @@ def fill_text_best_effort(page, caption: str, timeout_ms: int = 10_000) -> bool:
     return False
 
 
+def report_progress(args: argparse.Namespace, message: str) -> None:
+    callback = getattr(args, "_progress_callback", None)
+    if callback:
+        callback({
+            "message": message,
+            "publish_id": getattr(args, "publish_id", ""),
+            "index": getattr(args, "_task_index", 0),
+            "total": getattr(args, "_task_total", 0),
+        })
+
+
 def publish_tiktok(
     page,
     media_path: Path,
     caption: str,
     upload_wait_ms: int = DEFAULT_UPLOAD_WAIT_MS,
     content_check_action: str = "pause",
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    if progress:
+        progress("正在打开 TikTok 上传页")
     page.goto(DEFAULT_TIKTOK_UPLOAD_URL, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(3000)
 
+    if progress:
+        progress("正在上传 TikTok 视频并等待页面处理")
     uploaded = set_first_file_input(page, media_path, upload_wait_ms)
     clicked_upload_entry = False
     if not uploaded:
@@ -2883,6 +2932,8 @@ def publish_tiktok(
     if uploaded:
         page.wait_for_timeout(8000)
 
+    if progress:
+        progress("正在检查 TikTok 弹窗并填写文案")
     content_check = handle_content_check_popup(page, content_check_action)
     dismissed_popups = dismiss_safe_popups(page)
     caption_filled = fill_text_best_effort(page, caption)
@@ -2906,12 +2957,17 @@ def publish_facebook(
     upload_mode: str = "auto",
     composer_url: str = DEFAULT_FACEBOOK_COMPOSER_URL,
     content_mode: str = "post",
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    if progress:
+        progress("正在打开 Facebook 发布页")
     target_url = composer_url or DEFAULT_FACEBOOK_COMPOSER_URL
     page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(5000)
 
     dismissed_popups = dismiss_safe_popups(page)
+    if progress:
+        progress("正在上传 Facebook 素材")
     uploaded = False
     direct_input_attempted = upload_mode in {"auto", "input-only"}
     file_chooser_attempted = upload_mode in {"auto", "file-chooser"}
@@ -2923,12 +2979,16 @@ def publish_facebook(
         used_file_chooser = uploaded
     if uploaded:
         page.wait_for_timeout(5000)
+    if progress:
+        progress("正在等待 Facebook 素材处理")
     media_processing = wait_for_facebook_media_processing(
         page,
         media_path,
         uploaded,
         upload_wait_ms,
     )
+    if progress:
+        progress("正在填写 Facebook 文案")
     caption_filled = fill_text_best_effort(page, caption)
 
     return {
@@ -2987,6 +3047,7 @@ class TikTokPublisher(PlatformPublisher):
             caption,
             args.upload_wait_ms,
             content_check_action,
+            progress=lambda message: report_progress(args, message),
         )
 
 
@@ -3009,6 +3070,7 @@ class FacebookPublisher(PlatformPublisher):
             args.facebook_upload_mode,
             args.facebook_composer_url,
             args.facebook_content_mode,
+            progress=lambda message: report_progress(args, message),
         )
 
 
@@ -3045,6 +3107,8 @@ def plan_work_screenshot_path(plan_dir: Path, platform: str, publish_id: str = "
 
 
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
+    if error_type == "CSVFormatError":
+        return "PLAN_CONFIG_INVALID"
     haystack = f"{error_type} {error_message}".lower()
     platform_key = platform.lower()
     if "tasktimeouterror" in haystack or "hard timeout" in haystack or "task timeout" in haystack:
@@ -3280,7 +3344,9 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     if not media_path.exists():
         raise SystemExit(f"Media file does not exist: {media_path}")
 
-    delivery_csv = resolve_delivery_csv(media_path, args.delivery_csv)
+    # A generated plan already carries its caption and must not reload the source CSV.
+    use_plan_caption = getattr(args, "from_plan", False) and bool(args.caption)
+    delivery_csv = None if use_plan_caption else resolve_delivery_csv(media_path, args.delivery_csv)
     delivery_work_dir = default_delivery_work_dir(delivery_csv.parent) if delivery_csv is not None else None
     if args.screenshot and args.screenshot != DEFAULT_SCREENSHOT:
         screenshot_arg = args.screenshot
@@ -3401,6 +3467,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
         print(json.dumps({"plan": plan}, ensure_ascii=False, indent=2))
         return {"plan": plan, "result": {"status": "PLANNED"}}
 
+    report_progress(args, "正在连接比特浏览器并打开账号窗口")
     bit = BitBrowserClient(args.bit_api)
     health = bit.health()
     print("BitBrowser health:", json.dumps(health, ensure_ascii=False))
@@ -3414,6 +3481,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
     page = None
     tab_trace: dict[str, Any] = {}
     try:
+        report_progress(args, "正在连接账号窗口并新建任务标签页")
         pw, browser, page, tab_trace = connect_page(
             opened.cdp_url,
             args.tab_mode,
@@ -3466,6 +3534,7 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
             content_check_action,
         )
 
+        report_progress(args, "正在保存草稿截图和执行结果")
         page.screenshot(path=str(screenshot_path), full_page=True)
         media_processing_ok = (
             not result.get("media_processing_required")
@@ -3584,10 +3653,13 @@ def run_single_task_isolated(
         raise BitBrowserError("task timeout must be positive for isolated execution.")
 
     ctx = mp.get_context("spawn")
+    # UI callbacks stay in the parent process; isolated CLI tasks remain picklable.
+    worker_args = argparse.Namespace(**vars(task_args))
+    worker_args._progress_callback = None
     parent_conn, child_conn = ctx.Pipe(duplex=False)
     process = ctx.Process(
         target=_run_single_task_worker,
-        args=(task_args, child_conn),
+        args=(worker_args, child_conn),
     )
     process.start()
     child_conn.close()
@@ -3691,6 +3763,10 @@ def run_plan(args: argparse.Namespace) -> int:
 
     exit_code = 0
     for index, entry in enumerate(entries, start=1):
+        args.publish_id = entry.publish_id
+        args._task_index = index
+        args._task_total = len(entries)
+        report_progress(args, "正在检查任务素材和账号")
         task_started_at = datetime.now().isoformat(timespec="seconds")
         if entry.platform not in PUBLISHERS:
             print(
@@ -4415,14 +4491,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str], progress_callback: Callable[[dict[str, Any]], None] | None = None) -> int:
     configure_utf8_stdio()
     try:
         args = parse_args(argv)
+        args._progress_callback = progress_callback
         if args.one_click or not argv:
             args = configure_one_click(args)
         return run(args)
-    except (BitBrowserError, requests.RequestException) as exc:
+    except (BitBrowserError, CSVFormatError, requests.RequestException) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

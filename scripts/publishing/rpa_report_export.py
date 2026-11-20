@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bitbrowser_rpa_example import describe_error_action, recommend_error_action
+from rpa_csv import read_csv_rows as read_validated_csv_rows
 
 
 DEFAULT_SUMMARY = "publish_summary.csv"
@@ -107,8 +108,7 @@ def clean_text(value: Any) -> str:
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         raise FileNotFoundError(f"summary CSV not found: {path}")
-    with path.open("r", encoding="utf-8-sig", newline="") as fh:
-        return [{k: clean_text(v) for k, v in row.items()} for row in csv.DictReader(fh)]
+    return read_validated_csv_rows(path)
 
 
 def write_csv_rows(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:

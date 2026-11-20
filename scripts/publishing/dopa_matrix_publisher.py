@@ -42,6 +42,7 @@ from bitbrowser_rpa_example import (
 )
 from bitbrowser_rpa_example import main as publisher_main
 from rpa_workbench_server import build_config, run_server
+from rpa_csv import read_csv_table
 
 
 APP_TITLE = "DopaMatrix 发布操作台"
@@ -83,10 +84,7 @@ def fill_missing_plan_metadata(plan_csv: Path, client_id: str = "", product_id: 
     if not updates:
         return 0
 
-    with plan_csv.open("r", encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        fieldnames = list(reader.fieldnames or [])
-        rows = [{key: value or "" for key, value in row.items()} for row in reader]
+    fieldnames, rows = read_csv_table(plan_csv)
     if not rows:
         return 0
     for key in updates:
@@ -261,6 +259,8 @@ class PublisherLauncher(tk.Tk):
         return ""
 
     def validate_package(self, require_inputs: bool = True) -> tuple[Path, Path, Path]:
+        if not self.delivery_dir.get().strip():
+            raise ValueError("请先选择投放包文件夹。")
         root, delivery_csv, ledger_csv = self.package_paths()
         if not root.is_dir():
             raise ValueError("投放包文件夹不存在。")
@@ -346,6 +346,8 @@ class PublisherLauncher(tk.Tk):
                 self.status.set(f"已更新已有计划表的客户/产品信息：{updated_count} 行。")
             return plan_csv
         plan_csv = default_delivery_plan_path(root)
+        read_csv_table(delivery_csv)
+        read_csv_table(ledger_csv)
         argv = [
             "--generate-plan",
             "--delivery-dir",
@@ -740,7 +742,7 @@ class LedgerEditorWindow(tk.Toplevel):
         self.update_summary()
         self.set_status(
             f"已同步 BitBrowser 窗口 {len(discovered_rows)} 个，台账共 {len(self.rows)} 行，"
-            f"自动补齐 {max(0, after_filled - before_filled)} 个字段。"
+            f"自动补齐 {max(0, after_filled - before_filled)} 个字段；请补齐后点击“保存到投放包”。"
         )
         self._syncing = False
         self._set_sync_controls_enabled(True)
@@ -870,6 +872,7 @@ class LedgerEditorWindow(tk.Toplevel):
             write_account_ledger_rows(self.ledger_path, self.rows)
             self.dirty = False
             self.set_status(f"已保存台账：{self.ledger_path}")
+            self.master_launcher.refresh_package_check()
             messagebox.showinfo(APP_TITLE, f"已保存到\n{self.ledger_path}", parent=self)
         except Exception as exc:
             self.set_status(f"保存失败：{exc}")

@@ -10,6 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import rpa_customer_report_page_selftest  # noqa: E402
+import rpa_csv_selftest  # noqa: E402
 import rpa_ledger_sync_selftest  # noqa: E402
 import rpa_operator_console_selftest  # noqa: E402
 import rpa_stability_selftest  # noqa: E402
@@ -17,6 +18,9 @@ import rpa_url_detection_selftest  # noqa: E402
 
 
 def main() -> int:
+    print("Running CSV regression self-test...")
+    rpa_csv_selftest.main()
+    print()
     print("Running URL detection self-test...")
     rpa_url_detection_selftest.main()
     print()

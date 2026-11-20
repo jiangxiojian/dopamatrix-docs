@@ -8,7 +8,6 @@ does not require a web server or the main DopaMatrix application.
 from __future__ import annotations
 
 import argparse
-import csv
 import html
 import json
 from collections import Counter
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from bitbrowser_rpa_example import describe_error_action, recommend_error_action
+from rpa_csv import read_csv_rows as read_validated_csv_rows
 
 
 DEFAULT_PLAN = "publish_plan.csv"
@@ -74,8 +74,7 @@ FIELDS = [
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         return []
-    with path.open("r", encoding="utf-8-sig", newline="") as fh:
-        return [{k: (v or "").strip() for k, v in row.items()} for row in csv.DictReader(fh)]
+    return read_validated_csv_rows(path)
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -119,6 +118,8 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
         "product_id": first_nonempty(row, "product_id", "产品ID", "sku"),
         "media_path": first_nonempty(row, "media_path", "素材路径", "media", "path"),
         "title": first_nonempty(row, "title", "标题", "社交平台标题"),
+        "caption": first_nonempty(row, "caption", "文案", "description", "情绪化描述"),
+        "hashtags": first_nonempty(row, "hashtags", "标签", "黄金标签"),
         "tracking_url": first_nonempty(row, "tracking_url", "tracking_link", "追踪短链接"),
         "attribution_token": first_nonempty(row, "attribution_token", "归因token"),
         "screenshot": first_nonempty(row, "result_screenshot", "screenshot", "结果截图"),

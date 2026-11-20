@@ -1,6 +1,6 @@
 # 运营产品化文档索引
 
-> 更新时间：2026-08-21  
+> 更新时间：2026-11-20
 > 来源：事项清单截图之后的讨论  
 > 状态：规划草案。用于记录当前决策、边界和待验证假设，不等同于已上线功能。
 
@@ -39,13 +39,14 @@ DopaMatrix 当前已经具备内容工厂底座：本地 DAM、Story DSL、FFmpe
 | 7 | [07-implementation-roadmap.md](./07-implementation-roadmap.md) | 阶段拆解、优先级和跨模块数据主线。 |
 | 8 | [08-tk-fb-launch-plan.md](./08-tk-fb-launch-plan.md) | TK 视频 + FB 图文第一阶段冲刺计划、时间表和资源清单。 |
 | 9 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) | 比特浏览器 RPA 示例脚本说明。 |
-| 10 | [10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) | RPA 发布脚本从单条验证到批量半自动工具的建设计划和优先级。 |
+| 10 | [10-rpa-publisher-roadmap.md](./10-rpa-publisher-roadmap.md) | 发布脚本总计划、现行半自动能力及后续自动发布阶段和优先级。 |
 | 11 | [11-publish-data-schema.md](./11-publish-data-schema.md) | `publish_plans` / `publish_logs` 的字段、索引和状态流草案。 |
 | 12 | [12-account-ledger-template.md](./12-account-ledger-template.md) | `账号环境台账.csv` 的字段模板和示例行。 |
 | 13 | [13-rpa-script-runbook.md](./13-rpa-script-runbook.md) | 脚本的实际操作手册和常用命令。 |
 | 14 | [14-rpa-preflight-checklist.md](./14-rpa-preflight-checklist.md) | 发布前手工准备清单和交付 CSV 模板。 |
 | 15 | [TK_FB发布试点需求物品清单.xlsx](./TK_FB发布试点需求物品清单.xlsx) | 给负责人准备账号、IP、指纹环境、素材、权限和 RPA 验证项的 Excel 清单。 |
 | 16 | [15-rpa-operator-quickstart.txt](./15-rpa-operator-quickstart.txt) | 给普通运营打开即看的纯文本操作说明，不要求 Markdown 工具。 |
+| 17 | [16-rpa-auto-publishing-plan.md](./16-rpa-auto-publishing-plan.md) | 后续自动发布、封面、原生定时、批次批准、防重复和异常恢复的功能清单、优先级及验收。尚未实施。 |
 
 ## 事项清单覆盖关系
 
@@ -63,7 +64,7 @@ DopaMatrix 当前已经具备内容工厂底座：本地 DAM、Story DSL、FFmpe
 ## 讨论中的关键纠偏
 
 1. 事项清单里的“落地页”指 DopaMatrix 产品自己的宣传获客落地页，不是给每个甲方做商品落地页。客户导流目录页属于询盘归因和客服体系的可能组件，不能混进这个任务。
-2. 发布第一版应该是“脚本辅助 + 人工兜底”，不是全自动无人值守。
+2. 现行首版保持脚本辅助和人工最终发布；2026-11-20 已登记后续经批次批准的自动发布与定时计划，正常任务自动执行、异常交人工，目前尚未实施。
 3. 一个账号服务多个客户时，账号必须透明定位为垂直品类号、经销商号或媒体号，不能伪装成某个甲方的官方品牌号。
 4. 客户把账号交给我们运营时，最稳的是平台正式授权，不是直接共享密码。即使试点阶段先用自有账号，账号数据模型也要提前记录所有权和授权类型。
 5. 发布之前必须设计询盘归因，否则视频发出去后很难再证明某条询盘来自哪个客户、产品、账号和帖子。
