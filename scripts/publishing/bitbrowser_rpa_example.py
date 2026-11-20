@@ -2150,12 +2150,12 @@ def parse_platform_list(value: str, option_name: str) -> list[str]:
 
 
 def scan_media_files(delivery_dir: Path, extensions: set[str]) -> list[Path]:
-    ignored_dirs = {".git", "__pycache__", "node_modules", DEFAULT_WORK_DIRNAME}
+    ignored_dirs = {".git", "__pycache__", "node_modules", DEFAULT_WORK_DIRNAME, "covers"}
     files: list[Path] = []
     for path in delivery_dir.rglob("*"):
         if not path.is_file():
             continue
-        if ignored_dirs.intersection(path.parts):
+        if ignored_dirs.intersection(part.lower() for part in path.parts):
             continue
         if path.suffix.lower() in extensions:
             files.append(path.resolve())

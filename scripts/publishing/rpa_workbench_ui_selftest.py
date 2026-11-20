@@ -16,6 +16,7 @@ from dopa_matrix_publisher import LedgerEditorWindow, PublisherLauncher
 from rpa_operator_console_selftest import write_csv
 from rpa_workbench_server import WorkbenchConfig, WorkbenchHandler, WorkbenchState
 from rpa_entry_check import CONTROL_SNAPSHOT_JS, classify_page
+import rpa_publish_options_ui_selftest
 
 
 def main() -> int:
@@ -212,6 +213,7 @@ def main() -> int:
             thread.join(5)
     print("PASS browser account assignment, progress, delivery refresh, entry checks, duplicate protection and mobile layout")
     print(f"Screenshots: {screenshot_dir}")
+    rpa_publish_options_ui_selftest.main()
     return 0
 
 

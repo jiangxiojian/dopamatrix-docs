@@ -20,6 +20,7 @@
 | `账号环境台账.csv` | 是 | 记录账号键、窗口 ID 和默认处理方式。 | [12-account-ledger-template.md](./12-account-ledger-template.md) |
 | `矩阵投放文案对照表.csv` | 是 | 一次投放的文案、标签和追踪短链对照表。 | 本文模板 |
 | 素材目录 | 是 | 视频放 `videos/`，图片放 `images/`；两个目录和文案表、台账放在同一个投放包下。 | 见下方目录结构 |
+| 封面图片 | 可选 | 可在工作台导入静态 JPG/PNG/WebP（不超过 8 MB），程序复制到 `covers/` 并预览；目前仅保存本地预设，尚不应用到平台。 | 无需在投放文案表中新增封面行 |
 | `rpa_work/publish_plan.csv` | 否 | 可以手工准备，也可以让脚本自动生成；默认放在 `rpa_work/`，不要和输入文件混在根目录。 | [11-publish-data-schema.md](./11-publish-data-schema.md) |
 | Facebook 入口 URL | 视情况 | FB 视频/Reels/快拍建议手工确认入口再填。 | [09-bitbrowser-rpa-example.md](./09-bitbrowser-rpa-example.md) |
 | `rpa_work/` | 自动 | 用来放计划表、日志、汇总、客户报告和账号健康记录。 | 启动器会自动创建 |
@@ -36,10 +37,13 @@ delivery-package/
     demo_video_001.mp4
   images/
     demo_image_001.jpg
+  covers/
+    demo_cover.png
   矩阵投放文案对照表.csv
   账号环境台账.csv
   rpa_work/
     publish_plan.csv
+    publish_options.json
     publish_logs.jsonl
     publish_summary.csv
     customer_report_seed.csv
@@ -57,8 +61,8 @@ delivery-package/
 E:\project\dopaMatrix\dopamatrix_delivery_1781700321(1)
 ```
 
-图片素材放 `images/`，视频素材放 `videos/`。
-脚本会递归扫描投放包里的素材，但运营交接时按这两个固定目录整理，后续查找、复盘和补素材最清楚。
+图片素材放 `images/`，视频素材放 `videos/`，封面放 `covers/`；封面目录不参与发布任务生成，不需要在文案表填行。
+`publish_options.json` 由工作台自动保存发布预设和内容确认，不需人工编辑。本轮新增设置/确认界面尚待统一打包，已分发 EXE 以其实际功能为准。
 
 根目录只放人工输入和素材目录；脚本产物统一进 `rpa_work/`。
 旧测试包如果已经把 `publish_plan.csv`、`publish_logs.jsonl`、报告 CSV/HTML 放在根目录，脚本仍然能兼容打开，但新包按 `rpa_work/` 整理。

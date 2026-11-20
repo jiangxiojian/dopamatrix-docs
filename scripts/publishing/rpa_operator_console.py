@@ -121,6 +121,7 @@ def normalize_plan_row(row: dict[str, str], plan_csv: Path) -> dict[str, str]:
         "caption": first_nonempty(row, "caption", "文案", "description", "情绪化描述"),
         "hashtags": first_nonempty(row, "hashtags", "标签", "黄金标签"),
         "tracking_url": first_nonempty(row, "tracking_url", "tracking_link", "追踪短链接"),
+        "scheduled_at": first_nonempty(row, "scheduled_at", "排期时间"),
         "attribution_token": first_nonempty(row, "attribution_token", "归因token"),
         "screenshot": first_nonempty(row, "result_screenshot", "screenshot", "结果截图"),
         "error_type": first_nonempty(row, "error_type", "错误类型"),

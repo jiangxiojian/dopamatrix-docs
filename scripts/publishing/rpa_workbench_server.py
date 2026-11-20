@@ -50,6 +50,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
 from bitbrowser_rpa_example import main as publisher_main  # noqa: E402
 from rpa_plan_sync import sync_delivery_plan  # noqa: E402
 from rpa_entry_check import inspect_context, load_report, report_path, save_report  # noqa: E402
+from rpa_publish_options import CONTENT_FIELDS, PublishOptionsStore, TIMEZONES, delivery_copy, import_cover  # noqa: E402
 from rpa_report_export import (  # noqa: E402
     DEFAULT_DETAIL as DEFAULT_CUSTOMER_REPORT_DETAIL,
     DEFAULT_OVERVIEW as DEFAULT_CUSTOMER_REPORT_OVERVIEW,
@@ -106,6 +107,8 @@ def idle_only(method):
                 raise WorkbenchError("草稿正在准备中，请等待本批完成后再操作。")
             if self._inspection.get("running"):
                 raise WorkbenchError("正在检查发布入口，请等待检查结束后再操作。")
+            if self._confirmation.get("running"):
+                raise WorkbenchError("正在核对选中内容，请等待本批确认结束。")
             return method(self, *args, **kwargs)
     return guarded
 
@@ -168,6 +171,8 @@ class WorkbenchState:
         self._preparation: dict[str, Any] = {"running": False}
         self._delivery_sync: dict[str, Any] = {}
         self._inspection: dict[str, Any] = {"running": False}
+        self._confirmation: dict[str, Any] = {"running": False}
+        self.options_store = PublishOptionsStore(config.plan_csv)
         self.allowed_roots = [
             Path.cwd().resolve(),
             config.plan_csv.parent.resolve(),
@@ -178,6 +183,7 @@ class WorkbenchState:
             config.customer_report_html.parent.resolve(),
             config.account_health_csv.parent.resolve(),
             config.account_ledger_csv.parent.resolve(),
+            self.options_store.root.resolve(),
         ]
 
     def all_rows(self) -> list[dict[str, str]]:
@@ -189,14 +195,17 @@ class WorkbenchState:
         plan_index = {row["publish_id"]: row for row in plan_rows}
         accounts = self.accounts()
         health_index = latest_health_by_account(read_account_health(self.config.account_health_csv))
+        options_data = self.options_store.read()
+        source = delivery_copy(self.options_store.root)
         for row in rows:
             plan = plan_index.get(row["publish_id"], {})
             for key in ("account_key", "profile_id", "profile_name", "status"):
                 if plan.get(key):
                     row[key] = plan[key]
             if plan:
-                for key in ("title", "caption", "hashtags", "tracking_url"):
-                    row[key] = plan.get(key, "")
+                for key in CONTENT_FIELDS:
+                    if key in plan:
+                        row[key] = plan[key]
             matches = [a for a in accounts if a["account_key"] == row.get("account_key")
                        and a["platform"] == normalize_platform_name(row.get("platform", ""))]
             if len(matches) == 1:
@@ -219,6 +228,9 @@ class WorkbenchState:
             entry_path = report_path(self.config.plan_csv, row)
             row["entry_check"] = load_report(entry_path)
             row["entry_check_url"] = self.artifact_url(str(entry_path)) if row["entry_check"] else ""
+            row["publication"] = self.options_store.view(options_data, row, source)
+            cover_path = row["publication"]["options"].get("cover_path")
+            row["publication"]["cover_url"] = self.artifact_url(str(self.options_store.root / cover_path)) if cover_path else ""
         return rows
 
     def snapshot(self) -> dict[str, Any]:
@@ -246,7 +258,96 @@ class WorkbenchState:
             "preparation": self.preparation_status(),
             "delivery_sync": self._delivery_sync,
             "inspection": self.inspection_status(),
+            "confirmation": self.confirmation_status(),
+            "cover_files": self.cover_files(),
+            "timezones": list(TIMEZONES),
+            "default_operator": self.config.operator,
         }
+
+    def configurable_task(self, publish_id: str) -> dict[str, Any]:
+        rows = [normalize_plan_row(row, self.config.plan_csv) for row in read_csv_rows(self.config.plan_csv)]
+        if not publish_id or sum(row["publish_id"] == publish_id for row in rows) != 1:
+            raise WorkbenchError("请先确保计划中存在且只有一条对应任务。")
+        task = self.find_task(publish_id)
+        if (task.get("status") or "READY").upper() not in {"READY", "FAILED", "PARTIAL"}:
+            raise WorkbenchError("已有草稿或发布记录的任务需先处理原页面，再加入重试队列后修改设置。")
+        return task
+
+    def cover_files(self) -> list[dict[str, str]]:
+        root = self.options_store.root.resolve()
+        directory = root / "covers"
+        return [{"path": path.relative_to(root).as_posix(), "name": path.name,
+                 "url": self.artifact_url(str(path))}
+                for path in sorted(directory.rglob("*"))
+                if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+                and path.resolve().is_relative_to(root) and path.resolve().is_relative_to(directory.resolve())]
+
+    @idle_only
+    def save_publish_options(self, body: dict[str, Any]) -> dict[str, Any]:
+        task = self.configurable_task(clean_text(body.get("publish_id")))
+        self.options_store.save_settings(task, body.get("options"), clean_text(body.get("settings_version")))
+        return {"task": self.find_task(task["publish_id"])}
+
+    @idle_only
+    def import_task_cover(self, body: dict[str, Any]) -> dict[str, Any]:
+        task = self.configurable_task(clean_text(body.get("publish_id")))
+        filename = clean_text(body.get("filename"))
+        cover = import_cover(self.options_store.root, filename, body.get("base64"))
+        return {"path": cover, "cover_files": self.cover_files()}
+
+    def confirmation_status(self) -> dict[str, Any]:
+        with self._lock:
+            return dict(self._confirmation)
+
+    @idle_only
+    def confirm_content(self, body: dict[str, Any]) -> dict[str, Any]:
+        selected = body.get("publish_ids")
+        versions = body.get("versions")
+        operator = clean_text(body.get("operator")) or self.config.operator
+        if not isinstance(selected, list) or not selected or not all(isinstance(item, str) for item in selected):
+            raise WorkbenchError("请先选择待准备的任务。")
+        if len(set(selected)) != len(selected) or not isinstance(versions, dict):
+            raise WorkbenchError("任务选择或版本信息错误，请刷新后重试。")
+        if not operator:
+            raise WorkbenchError("请填写确认人。")
+        for publish_id in selected:
+            task = self.configurable_task(publish_id)
+            if not isinstance(versions.get(publish_id), str) or versions[publish_id] != task["publication"]["review_version"]:
+                raise WorkbenchError("任务内容已变化，请刷新核对后再确认。")
+        self._confirmation = {"running": True, "publish_ids": selected, "index": 0, "total": len(selected),
+                              "message": "正在核对素材和封面文件，请稍候……", "started_at": now_text()}
+        self._confirmation_thread = threading.Thread(target=self._confirm_worker, args=(list(selected), dict(versions), operator), daemon=True)
+        try:
+            self._confirmation_thread.start()
+        except Exception:
+            self._confirmation["running"] = False
+            raise
+        return self.confirmation_status()
+
+    def _confirm_worker(self, selected: list[str], versions: dict[str, str], operator: str) -> None:
+        try:
+            confirmations = {}
+            for index, publish_id in enumerate(selected, 1):
+                with self._lock:
+                    self._confirmation.update(index=index, publish_id=publish_id, message="正在计算素材和封面指纹")
+                task = self.configurable_task(publish_id)
+                confirmations[publish_id] = self.options_store.build_confirmation(task, versions[publish_id], operator)
+            # Recheck every task before committing the entire batch to one settings file.
+            with self._lock:
+                for publish_id in selected:
+                    task = self.configurable_task(publish_id)
+                    if task["publication"]["review_version"] != versions[publish_id] or task["publication"]["confirmation_error"]:
+                        raise WorkbenchError("确认期间任务发生变化，本批未写入，请刷新后重新确认。")
+                data = self.options_store.read()
+                for publish_id, confirmation in confirmations.items():
+                    record = data["tasks"].setdefault(publish_id, {})
+                    record["confirmation"] = confirmation
+                self.options_store.write(data)
+            result = {"confirmed": len(selected), "message": f"已记录 {len(selected)} 条内容确认；自动提交尚未启用，最终仍需人工发布。"}
+        except (Exception, SystemExit) as exc:
+            result = {"confirmed": 0, "error": str(exc), "message": f"本批内容确认未完成：{exc}"}
+        with self._lock:
+            self._confirmation.update(result, running=False, finished_at=now_text())
 
     @idle_only
     def inspect_entry(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -718,6 +819,8 @@ def text_response(handler: BaseHTTPRequestHandler, text: str, content_type: str 
 
 def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
     length = int(handler.headers.get("Content-Length") or "0")
+    if length > 12 * 1024 * 1024:
+        raise WorkbenchError("请求内容过大，封面请选择不超过 8 MB 的图片。")
     if length <= 0:
         return {}
     raw = handler.rfile.read(length)
@@ -813,6 +916,18 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     details.task-details {{ margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; }}
     details.task-details > summary {{ cursor: pointer; color: var(--blue); font-size: 13px; }}
     .paths, .error {{ color: var(--muted); font-size: 12px; display: grid; gap: 3px; overflow-wrap: anywhere; margin-top: 8px; }}
+    .publish-options {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }}
+    .publish-options h3 {{ font-size: 14px; margin: 0 0 8px; }}
+    .option-note {{ font-size: 12px; color: var(--muted); margin: 6px 0 10px; }}
+    .cover-preview {{ display: block; max-width: 100%; width: 220px; height: 140px; object-fit: contain; background: #f2f5f7; margin: 8px 0; }}
+    .cover-preview[hidden] {{ display: none; }}
+    dialog {{ width: min(720px, calc(100vw - 40px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); padding: 20px; border-radius: 6px; }}
+    dialog::backdrop {{ background: rgba(0, 0, 0, .35); }}
+    .review-items {{ max-height: 55vh; overflow: auto; margin: 12px 0; }}
+    .review-item {{ padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }}
+    .review-item pre {{ white-space: pre-wrap; font: inherit; font-size: 13px; }}
+    .review-footer {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
+    .form-grid input, .form-grid select {{ min-width: 0; max-width: 100%; width: 100%; }}
     .error {{ color: var(--bad); margin-top: 6px; }}
     .forms {{ display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr); gap: 12px; margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }}
     .form-grid {{ display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 8px; }}
@@ -861,6 +976,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     </div>
     <div class="toolbar-row">
       <button id="prepareSelected" class="primary">准备选中草稿</button>
+      <button id="confirmSelected" class="soft">确认选中内容</button>
       <button id="reload" class="soft">刷新投放表</button>
       <button id="exportSummary" class="soft">导出汇总 CSV</button>
       <button id="exportReport" class="soft">导出客户报告种子</button>
@@ -870,6 +986,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
   <section id="deliverySync" class="preparation" role="status" aria-live="polite" hidden></section>
   <section id="preparation" class="preparation" role="status" aria-live="polite" hidden></section>
   <section id="inspection" class="preparation" role="status" aria-live="polite" hidden></section>
+  <section id="confirmation" class="preparation" role="status" aria-live="polite" hidden></section>
   <main>
     <div class="list-head">
       <strong>任务列表</strong>
@@ -878,12 +995,25 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     <div id="tasks"></div>
   </main>
   <div class="toast" id="toast"></div>
+  <dialog id="reviewDialog" aria-labelledby="reviewTitle">
+    <h2 id="reviewTitle">确认本批内容</h2>
+    <p class="option-note">这里只记录本批素材、封面、文案和设置的确认，不会上传或发布。内容变化后需重新确认。</p>
+    <div class="review-items" id="reviewItems"></div>
+    <div class="review-footer">
+      <label>确认人 <input id="reviewOperator" maxlength="80"></label>
+      <button id="cancelReview" class="soft">返回检查</button>
+      <button id="saveReview" class="primary">确认并记录</button>
+    </div>
+  </dialog>
   <script>
-    const state = {{ tasks: [], accounts: [], counts: {{}}, platforms: {{}}, sources: {{}}, preparation: {{}}, inspection: {{}} }};
+    const state = {{ tasks: [], accounts: [], counts: {{}}, platforms: {{}}, sources: {{}}, preparation: {{}}, inspection: {{}}, confirmation: {{}}, cover_files: [], timezones: [] }};
     let submittingPreparation = false;
     let syncingDelivery = false;
     let preparationTimer;
     let inspectionTimer;
+    let confirmationTimer;
+    let editingSettings = false;
+    let reviewSelection = [];
     let pollError = '';
     const tasksEl = document.querySelector('#tasks');
     const toastEl = document.querySelector('#toast');
@@ -1009,7 +1139,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     }}
 
     function preparationBusy() {{
-      return submittingPreparation || Boolean(state.preparation.running) || Boolean(state.inspection.running);
+      return submittingPreparation || editingSettings || Boolean(state.preparation.running) || Boolean(state.inspection.running) || Boolean(state.confirmation.running);
     }}
 
     function renderPreparation() {{
@@ -1020,7 +1150,9 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       document.querySelector('#reload').textContent = syncingDelivery ? '正在刷新…' : '刷新投放表';
       document.querySelector('#prepareSelected').textContent = busy ? '正在准备草稿…' : '准备选中草稿';
       if (state.inspection.running) document.querySelector('#prepareSelected').textContent = '正在检查入口…';
-      document.querySelectorAll('#tasks button, #tasks select, input[data-select], #selectVisible, #reload, #exportSummary, #exportReport, #exportReportPage')
+      if (state.confirmation.running) document.querySelector('#prepareSelected').textContent = '正在确认内容…';
+      if (editingSettings) document.querySelector('#prepareSelected').textContent = '正在保存设置…';
+      document.querySelectorAll('#tasks button, #tasks select, #tasks input[data-option], #tasks input[data-cover-upload], input[data-select], #selectVisible, #confirmSelected, #reload, #exportSummary, #exportReport, #exportReportPage')
         .forEach((el) => {{
           el.disabled = busy || syncingDelivery || el.dataset.locked === 'true';
         }});
@@ -1054,6 +1186,72 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         renderInspection();
         renderPreparation();
       }}, 1000);
+    }}
+
+    function renderConfirmation() {{
+      const job = state.confirmation;
+      const panel = document.querySelector('#confirmation');
+      panel.hidden = !job.running && !job.message;
+      panel.textContent = `${{job.message || ''}} ${{job.total ? ` · 第 ${{job.index || 0}} / ${{job.total}} 条` : ''}} ${{job.publish_id || ''}}`;
+      clearTimeout(confirmationTimer);
+      if (job.running) confirmationTimer = setTimeout(async () => {{
+        try {{
+          state.confirmation = await api('/api/confirmation-status');
+          if (!state.confirmation.running) {{ await load(); return; }}
+        }} catch (error) {{ toast(`确认状态连接中断，正在重连：${{error.message}}`, true); }}
+        renderConfirmation(); renderPreparation();
+      }}, 1000);
+    }}
+
+    function optionSelect(task, key, choices, editable) {{
+      const options = (task.publication || {{}}).options || {{}};
+      return `<select data-option="${{key}}" data-task="${{esc(task.publish_id)}}" name="${{fieldName(task.publish_id, key)}}" data-locked="${{!editable}}" ${{editable ? '' : 'disabled'}}>
+        ${{choices.map(([value, label]) => `<option value="${{esc(value)}}" ${{options[key] === value ? 'selected' : ''}}>${{esc(label)}}</option>`).join('')}}</select>`;
+    }}
+
+    function publicationHtml(task, editable) {{
+      const publication = task.publication || {{}};
+      const options = publication.options || {{}};
+      const imagePost = task.content_type === 'image' || /\.(?:jpg|jpeg|png|webp)$/i.test(task.media_path || '');
+      const status = {{ CONFIRMED: '内容已确认，尚未自动提交', STALE: '内容已变化，需要重新确认', UNCONFIRMED: '内容未确认' }};
+      return `<section class="publish-options">
+        <h3>发布设置与封面</h3>
+        <p class="option-note">目前保存为预设；准备草稿仍需在平台手动选择封面、设置时间并发布。</p>
+        <div class="form-grid">
+          <label>发布模式${{optionSelect(task, 'publish_mode', [['manual', '人工确认'], ['auto_now', '自动立即发布（预设）'], ['platform_schedule', '平台定时（预设）']], editable)}}</label>
+          <label>可见范围${{optionSelect(task, 'visibility', [['platform_default', '平台默认'], ['public', '公开'], ...(task.platform === 'tiktok' ? [['private', '仅自己']] : [])], editable)}}</label>
+          <label>预设发布时间<input data-option="publish_time" data-task="${{esc(task.publish_id)}}" name="${{fieldName(task.publish_id, 'publish_time')}}" type="datetime-local" value="${{esc(options.publish_time)}}" data-locked="${{!editable}}" ${{editable ? '' : 'disabled'}}></label>
+          <label>时区${{optionSelect(task, 'timezone', state.timezones.map((zone) => [zone, zone]), editable)}}</label>
+          <label>封面方式${{optionSelect(task, 'cover_mode', [['platform', '平台默认'], ...(!imagePost ? [['image', '本地图片']] : [])], editable)}}</label>
+          <label>封面文件${{optionSelect(task, 'cover_path', [['', '请选择封面'], ...state.cover_files.map((cover) => [cover.path, cover.name])], editable && !imagePost)}}</label>
+          <label class="wide">导入封面<input type="file" data-cover-upload="${{esc(task.publish_id)}}" accept="image/jpeg,image/png,image/webp" data-locked="${{!editable || imagePost}}" ${{editable && !imagePost ? '' : 'disabled'}}></label>
+          <label>商业内容声明${{optionSelect(task, 'commercial_content', [['unset', '尚未指定'], ['yes', '是'], ['no', '否']], editable)}}</label>
+          <label>AI 内容声明${{optionSelect(task, 'ai_content', [['unset', '尚未指定'], ['yes', '是'], ['no', '否']], editable)}}</label>
+        </div>
+        <img class="cover-preview" data-cover-preview="${{esc(task.publish_id)}}" src="${{esc(publication.cover_url || '')}}" alt="封面预览" ${{options.cover_mode === 'image' && publication.cover_url ? '' : 'hidden'}}>
+        <div class="paths">${{options.publish_at_utc ? `预设 UTC 时间：${{esc(options.publish_at_utc)}}；尚未提交平台排期。` : ''}}</div>
+        <div class="paths" data-confirmation-result="${{esc(task.publish_id)}}">${{esc(status[publication.confirmation_status] || '')}}${{publication.confirmed_by ? ` · ${{esc(publication.confirmed_by)}} · ${{esc(publication.confirmed_at)}}` : ''}}</div>
+        ${{publication.confirmation_error ? `<div class="assignment-error">${{esc(publication.confirmation_error)}}</div>` : ''}}
+        <button class="soft" data-action="save-options" data-id="${{esc(task.publish_id)}}" data-locked="${{!editable}}" ${{editable ? '' : 'disabled'}}>保存发布设置</button>
+      </section>`;
+    }}
+
+    function selectedOptions(task) {{
+      const keys = ['publish_mode', 'cover_mode', 'cover_path', 'publish_time', 'timezone', 'visibility', 'commercial_content', 'ai_content'];
+      return Object.fromEntries(keys.map((key) => [key, value(task.publish_id, key)]));
+    }}
+
+    function unsavedOptions(task) {{
+      const saved = (task.publication || {{}}).options || {{}};
+      return Object.entries(selectedOptions(task)).some(([key, value]) => value !== saved[key]);
+    }}
+
+    function updateCoverPreview(id) {{
+      const image = document.querySelector(`[data-cover-preview="${{CSS.escape(id)}}"]`);
+      if (!image) return;
+      const cover = state.cover_files.find((item) => item.path === value(id, 'cover_path'));
+      image.hidden = value(id, 'cover_mode') !== 'image' || !cover;
+      if (cover) image.src = cover.url;
     }}
 
     function entryCheckHtml(task) {{
@@ -1168,6 +1366,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                   <button class="soft" data-action="inspect" data-id="${{publishId}}">检查发布入口</button>
                 </div>
                 ${{entryCheckHtml(task)}}
+                ${{publicationHtml(task, editable)}}
                 <div class="forms">
                   <section>
                     <div class="form-grid">
@@ -1308,6 +1507,10 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       state.sources = data.sources || {{}};
       state.preparation = data.preparation || {{}};
       state.inspection = data.inspection || {{}};
+      state.confirmation = data.confirmation || {{}};
+      state.cover_files = data.cover_files || [];
+      state.timezones = data.timezones || [];
+      state.default_operator = data.default_operator || '';
       const sync = data.delivery_sync || {{}};
       const syncPanel = document.querySelector('#deliverySync');
       syncPanel.hidden = sync.added === undefined;
@@ -1318,6 +1521,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       renderPreparation();
       schedulePreparationPoll();
       renderInspection();
+      renderConfirmation();
     }}
 
     document.addEventListener('click', async (event) => {{
@@ -1325,6 +1529,17 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       if (!button) return;
       const id = button.dataset.id;
       try {{
+        if (button.dataset.action === 'save-options') {{
+          if (preparationBusy()) return;
+          const task = state.tasks.find((item) => item.publish_id === id);
+          editingSettings = true; renderPreparation();
+          try {{
+            await api('/api/publish-options', {{ method: 'POST', body: JSON.stringify({{
+              publish_id: id, settings_version: task.publication.settings_version, options: selectedOptions(task)
+            }}) }});
+            await load(); toast('设置已保存；仍需人工在平台应用设置并发布');
+          }} finally {{ editingSettings = false; renderPreparation(); }}
+        }}
         if (button.dataset.action === 'assign') {{
           await api('/api/assign-account', {{ method: 'POST', body: JSON.stringify({{ publish_id: id, account_key: value(id, 'account_key') }}) }});
           await load();
@@ -1356,7 +1571,30 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         toast(error.message || String(error), true);
       }}
     }});
-    document.addEventListener('change', (event) => {{
+    document.addEventListener('change', async (event) => {{
+      const fileInput = event.target.closest('input[data-cover-upload]');
+      if (fileInput && fileInput.files[0]) {{
+        const id = fileInput.dataset.coverUpload;
+        const file = fileInput.files[0];
+        if (file.size > 8 * 1024 * 1024) {{ toast('封面请选择不超过 8 MB 的图片', true); fileInput.value = ''; return; }}
+        editingSettings = true; renderPreparation();
+        try {{
+          const encoded = await new Promise((resolve, reject) => {{
+            const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]);
+            reader.onerror = reject; reader.readAsDataURL(file);
+          }});
+          const result = await api('/api/import-cover', {{ method: 'POST', body: JSON.stringify({{ publish_id: id, filename: file.name, base64: encoded }}) }});
+          state.cover_files = result.cover_files;
+          const select = document.querySelector(`[name="${{CSS.escape(fieldName(id, 'cover_path'))}}"]`);
+          select.innerHTML = '<option value="">请选择封面</option>' + state.cover_files.map((cover) => `<option value="${{esc(cover.path)}}">${{esc(cover.name)}}</option>`).join('');
+          select.value = result.path; setValue(id, 'cover_mode', 'image'); updateCoverPreview(id);
+          toast('封面已导入当前投放包，请保存发布设置');
+        }} catch (error) {{ toast(error.message || String(error), true); }}
+        finally {{ editingSettings = false; renderPreparation(); fileInput.value = ''; }}
+        return;
+      }}
+      const option = event.target.closest('[data-option]');
+      if (option) {{ updateCoverPreview(option.dataset.task); return; }}
       const select = event.target.closest('select[data-assignment]');
       if (!select) return;
       const task = state.tasks.find((item) => item.publish_id === select.dataset.assignment);
@@ -1394,6 +1632,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         return;
       }}
       const selected = state.tasks.filter((task) => publishIds.includes(task.publish_id));
+      if (selected.some(unsavedOptions)) {{ toast('请先保存选中任务的发布设置', true); return; }}
       if (selected.some((task) => value(task.publish_id, 'account_key') !== task.account_key || task.assignment_error)) {{
         toast('请先选择并保存每条任务的目标账号和窗口', true);
         return;
@@ -1417,6 +1656,50 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         schedulePreparationPoll();
         if (!state.preparation.running) await load();
       }}
+    }});
+    document.querySelector('#confirmSelected').addEventListener('click', () => {{
+      if (preparationBusy()) return;
+      const ids = [...document.querySelectorAll('input[data-select]:checked')].map((input) => input.dataset.select);
+      reviewSelection = state.tasks.filter((task) => ids.includes(task.publish_id));
+      if (!reviewSelection.length) {{ toast('请先勾选要确认的任务', true); return; }}
+      if (reviewSelection.some((task) => unsavedOptions(task) || value(task.publish_id, 'account_key') !== task.account_key)) {{ toast('请先保存目标账号和发布设置', true); return; }}
+      const invalid = reviewSelection.find((task) => task.publication.confirmation_error);
+      if (invalid) {{ toast(invalid.publication.confirmation_error, true); return; }}
+      const modes = {{ manual: '人工确认', auto_now: '自动立即发布（预设）', platform_schedule: '平台定时（预设）' }};
+      const visibilities = {{ platform_default: '平台默认', public: '公开', private: '仅自己' }};
+      const answers = {{ unset: '尚未指定', yes: '是', no: '否' }};
+      document.querySelector('#reviewItems').innerHTML = reviewSelection.map((task) => {{
+        const options = task.publication.options;
+        return `<div class="review-item"><strong>${{esc(task.publish_id)}} · ${{esc(task.platform)}} · ${{esc(task.account_key)}}</strong>
+          <div>${{esc(task.media_path)}}</div><pre>${{esc([task.title, task.caption, task.hashtags].filter(Boolean).join('\\n\\n'))}}</pre>
+          <div>发布模式：${{modes[options.publish_mode]}} · 可见范围：${{visibilities[options.visibility]}}</div>
+          <div>商业内容：${{answers[options.commercial_content]}} · AI 内容：${{answers[options.ai_content]}}</div>
+          ${{task.tracking_url ? `<div>追踪链接：${{esc(task.tracking_url)}}</div>` : ''}}
+          ${{options.publish_time ? `<div>预设时间：${{esc(options.publish_time)}} ${{esc(options.timezone)}} · UTC ${{esc(options.publish_at_utc)}}</div>` : ''}}
+          ${{options.cover_mode === 'image' ? `<img class="cover-preview" src="${{esc(task.publication.cover_url)}}" alt="封面预览">` : '<div>封面：平台默认</div>'}}</div>`;
+      }}).join('');
+      document.querySelector('#reviewOperator').value = state.default_operator || '';
+      document.querySelector('#reviewDialog').showModal();
+    }});
+    document.querySelector('#cancelReview').addEventListener('click', () => document.querySelector('#reviewDialog').close());
+    document.querySelector('#saveReview').addEventListener('click', async () => {{
+      if (preparationBusy()) return;
+      const operator = document.querySelector('#reviewOperator').value.trim();
+      if (!operator) {{ toast('请填写确认人', true); return; }}
+      state.confirmation = {{ running: true, message: '正在启动本批内容确认…' }};
+      document.querySelector('#reviewDialog').close(); renderConfirmation(); renderPreparation();
+      try {{
+        state.confirmation = await api('/api/confirm-content', {{ method: 'POST', body: JSON.stringify({{
+          publish_ids: reviewSelection.map((task) => task.publish_id),
+          versions: Object.fromEntries(reviewSelection.map((task) => [task.publish_id, task.publication.review_version])), operator
+        }}) }});
+      }} catch (error) {{
+        try {{ state.confirmation = await api('/api/confirmation-status'); }}
+        catch (_) {{ state.confirmation = {{ running: true, message: '连接中断，正在确认内容核对状态' }}; }}
+        toast(error.message || String(error), true);
+      }}
+      renderConfirmation(); renderPreparation();
+      if (!state.confirmation.running) await load();
     }});
     document.querySelector('#exportSummary').addEventListener('click', async () => {{
       try {{
@@ -1478,6 +1761,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/entry-status":
                 json_response(self, self.state.inspection_status())
                 return
+            if parsed.path == "/api/confirmation-status":
+                json_response(self, self.state.confirmation_status())
+                return
             if parsed.path == "/artifact":
                 params = parse_qs(parsed.query)
                 artifact = self.state.resolve_artifact(params.get("path", [""])[0])
@@ -1514,6 +1800,15 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/inspect-entry":
                 json_response(self, self.state.inspect_entry(body))
+                return
+            if parsed.path == "/api/publish-options":
+                json_response(self, self.state.save_publish_options(body))
+                return
+            if parsed.path == "/api/import-cover":
+                json_response(self, self.state.import_task_cover(body))
+                return
+            if parsed.path == "/api/confirm-content":
+                json_response(self, self.state.confirm_content(body))
                 return
             if parsed.path == "/api/assign-account":
                 json_response(self, self.state.assign_account(body))
