@@ -49,6 +49,7 @@ from bitbrowser_rpa_example import (  # noqa: E402
 )
 from bitbrowser_rpa_example import main as publisher_main  # noqa: E402
 from rpa_plan_sync import sync_delivery_plan  # noqa: E402
+from rpa_entry_check import inspect_context, load_report, report_path, save_report  # noqa: E402
 from rpa_report_export import (  # noqa: E402
     DEFAULT_DETAIL as DEFAULT_CUSTOMER_REPORT_DETAIL,
     DEFAULT_OVERVIEW as DEFAULT_CUSTOMER_REPORT_OVERVIEW,
@@ -103,6 +104,8 @@ def idle_only(method):
         with self._lock:
             if self._preparation.get("running"):
                 raise WorkbenchError("草稿正在准备中，请等待本批完成后再操作。")
+            if self._inspection.get("running"):
+                raise WorkbenchError("正在检查发布入口，请等待检查结束后再操作。")
             return method(self, *args, **kwargs)
     return guarded
 
@@ -164,6 +167,7 @@ class WorkbenchState:
         self._lock = threading.RLock()
         self._preparation: dict[str, Any] = {"running": False}
         self._delivery_sync: dict[str, Any] = {}
+        self._inspection: dict[str, Any] = {"running": False}
         self.allowed_roots = [
             Path.cwd().resolve(),
             config.plan_csv.parent.resolve(),
@@ -212,6 +216,9 @@ class WorkbenchState:
                 row["account_health_issue"] = health.get("issue_type", "")
                 row["account_health_note"] = health.get("note", "")
                 row["account_health_at"] = health.get("logged_at", "")
+            entry_path = report_path(self.config.plan_csv, row)
+            row["entry_check"] = load_report(entry_path)
+            row["entry_check_url"] = self.artifact_url(str(entry_path)) if row["entry_check"] else ""
         return rows
 
     def snapshot(self) -> dict[str, Any]:
@@ -238,7 +245,62 @@ class WorkbenchState:
             "accounts": self.accounts(),
             "preparation": self.preparation_status(),
             "delivery_sync": self._delivery_sync,
+            "inspection": self.inspection_status(),
         }
+
+    @idle_only
+    def inspect_entry(self, body: dict[str, Any]) -> dict[str, Any]:
+        publish_id = clean_text(body.get("publish_id"))
+        matches = [normalize_plan_row(row, self.config.plan_csv) for row in read_csv_rows(self.config.plan_csv)
+                   if normalize_plan_row(row, self.config.plan_csv)["publish_id"] == publish_id]
+        if len(matches) != 1:
+            raise WorkbenchError("请先确保计划中存在且只有一条对应任务。")
+        task = self.find_task(publish_id)
+        if task.get("assignment_error") or not task.get("profile_id"):
+            raise WorkbenchError("请先核对并保存唯一的目标账号和窗口分配。")
+        self._inspection = {"running": True, "publish_id": task["publish_id"], "started_at": now_text(),
+                            "message": "正在读取目标窗口的发布入口，请稍候……"}
+        self._inspection_thread = threading.Thread(target=self._inspect_worker, args=(dict(task),), daemon=True)
+        try:
+            self._inspection_thread.start()
+        except Exception:
+            self._inspection["running"] = False
+            raise
+        return self.inspection_status()
+
+    def inspection_status(self) -> dict[str, Any]:
+        with self._lock:
+            return dict(self._inspection)
+
+    def _inspect_worker(self, task: dict[str, Any]) -> None:
+        pw = None
+        try:
+            bit = BitBrowserClient(self.config.bit_api, timeout=8)
+            bit.health()
+            opened = bit.open_profile(task["profile_id"])
+            pw, browser, context = connect_browser_context(opened.cdp_url, timeout_ms=10_000, allow_new_context=False)
+            result = inspect_context(context, normalize_platform_name(task["platform"]))
+        except (Exception, SystemExit) as exc:
+            result = {"status": "CHECK_FAILED", "checked_at": now_text(), "platform": task["platform"],
+                      "identity_verified": False, "automation_verified": False,
+                      "error_type": type(exc).__name__,
+                      "message": "未能读取发布入口，请检查比特浏览器 Local API、目标窗口和页面是否可用。"}
+        finally:
+            if pw is not None:
+                try:
+                    pw.stop()
+                except Exception:
+                    pass
+        result.update(publish_id=task["publish_id"], account_key=task.get("account_key", ""),
+                      profile_id=task["profile_id"], content_type=task.get("content_type", ""),
+                      facebook_content_mode=task.get("facebook_content_mode", ""))
+        try:
+            save_report(report_path(self.config.plan_csv, task), result)
+        except Exception:
+            result.update(status="CHECK_FAILED", message="检查记录保存失败，请检查投放包目录是否可写。")
+        with self._lock:
+            self._inspection.update(running=False, finished_at=now_text(), result=result,
+                                    message=result.get("message") or "入口检查已结束，请查看任务详情。")
 
     @idle_only
     def refresh_delivery(self) -> dict[str, Any]:
@@ -807,6 +869,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
   </nav>
   <section id="deliverySync" class="preparation" role="status" aria-live="polite" hidden></section>
   <section id="preparation" class="preparation" role="status" aria-live="polite" hidden></section>
+  <section id="inspection" class="preparation" role="status" aria-live="polite" hidden></section>
   <main>
     <div class="list-head">
       <strong>任务列表</strong>
@@ -816,10 +879,11 @@ def render_page(title: str = "RPA 确认工作台") -> str:
   </main>
   <div class="toast" id="toast"></div>
   <script>
-    const state = {{ tasks: [], accounts: [], counts: {{}}, platforms: {{}}, sources: {{}}, preparation: {{}} }};
+    const state = {{ tasks: [], accounts: [], counts: {{}}, platforms: {{}}, sources: {{}}, preparation: {{}}, inspection: {{}} }};
     let submittingPreparation = false;
     let syncingDelivery = false;
     let preparationTimer;
+    let inspectionTimer;
     let pollError = '';
     const tasksEl = document.querySelector('#tasks');
     const toastEl = document.querySelector('#toast');
@@ -945,24 +1009,26 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     }}
 
     function preparationBusy() {{
-      return submittingPreparation || Boolean(state.preparation.running);
+      return submittingPreparation || Boolean(state.preparation.running) || Boolean(state.inspection.running);
     }}
 
     function renderPreparation() {{
       const job = state.preparation;
       const busy = preparationBusy();
+      const preparing = submittingPreparation || Boolean(job.running);
       document.querySelector('#prepareSelected').disabled = busy || syncingDelivery;
       document.querySelector('#reload').textContent = syncingDelivery ? '正在刷新…' : '刷新投放表';
       document.querySelector('#prepareSelected').textContent = busy ? '正在准备草稿…' : '准备选中草稿';
+      if (state.inspection.running) document.querySelector('#prepareSelected').textContent = '正在检查入口…';
       document.querySelectorAll('#tasks button, #tasks select, input[data-select], #selectVisible, #reload, #exportSummary, #exportReport, #exportReportPage')
         .forEach((el) => {{
           el.disabled = busy || syncingDelivery || el.dataset.locked === 'true';
         }});
       const panel = document.querySelector('#preparation');
-      panel.hidden = !busy && !job.message;
+      panel.hidden = !preparing && !job.message;
       const elapsed = job.started_at ? Math.max(0, Math.floor((Date.now() - Date.parse(job.started_at)) / 1000)) : 0;
-      const timing = busy ? ` · 已等待 ${{elapsed}} 秒` : '';
-      panel.innerHTML = `${{busy ? '<progress aria-label="草稿准备中"></progress>' : ''}}
+      const timing = preparing ? ` · 已等待 ${{elapsed}} 秒` : '';
+      panel.innerHTML = `${{preparing ? '<progress aria-label="草稿准备中"></progress>' : ''}}
         <strong>${{esc(job.message || '正在提交任务，请稍候…')}}</strong>
         <span>${{job.total ? ` · 第 ${{job.index || 0}} / ${{job.total}} 条` : ''}} ${{esc(job.publish_id)}}${{timing}}</span>
         ${{pollError ? `<div class="assignment-error">${{esc(pollError)}}，正在重连，请勿重复启动。</div>` : ''}}`;
@@ -971,6 +1037,42 @@ def render_page(title: str = "RPA 确认工作台") -> str:
     function schedulePreparationPoll() {{
       clearTimeout(preparationTimer);
       if (state.preparation.running) preparationTimer = setTimeout(pollPreparation, 1000);
+    }}
+
+    function renderInspection() {{
+      const panel = document.querySelector('#inspection');
+      panel.hidden = !state.inspection.running && !state.inspection.message;
+      const elapsed = state.inspection.running && state.inspection.started_at
+        ? ` · 已等待 ${{Math.max(0, Math.floor((Date.now() - Date.parse(state.inspection.started_at)) / 1000))}} 秒` : '';
+      panel.textContent = `${{state.inspection.publish_id || ''}} ${{state.inspection.message || ''}}${{elapsed}}`;
+      clearTimeout(inspectionTimer);
+      if (state.inspection.running) inspectionTimer = setTimeout(async () => {{
+        try {{
+          state.inspection = await api('/api/entry-status');
+          if (!state.inspection.running) {{ await load(); return; }}
+        }} catch (error) {{ panel.textContent = `检查连接中断，正在重连：${{error.message}}`; }}
+        renderInspection();
+        renderPreparation();
+      }}, 1000);
+    }}
+
+    function entryCheckHtml(task) {{
+      const check = task.entry_check || {{}};
+      if (!check.status) return '';
+      const labels = {{ ENTRY_OBSERVED: '发现发布页线索，功能待验证', ENTRY_NOT_OPEN: '请先打开发布编辑页',
+        NO_PLATFORM_TAB: '未找到本平台标签页', ACCOUNT_ACTION_REQUIRED: '页面出现登录或验证提示，需人工检查',
+        AMBIGUOUS_ENTRIES: '发现多个发布页或 Page，需人工核对目标',
+        SCAN_FAILED: '页面读取失败', PARTIAL_SCAN: '部分页面未读取完整', CHECK_FAILED: '入口检查失败' }};
+      const features = {{ cover: '封面', schedule: '定时', submit: '发布', upload: '上传' }};
+      const states = {{ OBSERVED: '发现入口，未验证', OBSERVED_DISABLED: '发现入口，当前禁用', NOT_OBSERVED: '未发现（不代表不支持）' }};
+      return `<div class="paths" data-entry-result="${{esc(task.publish_id)}}">
+        <strong>${{esc(labels[check.status] || check.status)}} · ${{esc(check.checked_at)}}</strong>
+        ${{Object.entries(check.capabilities || {{}}).map(([key, value]) => `<div>${{features[key] || esc(key)}}：${{esc(states[value] || value)}}</div>`).join('')}}
+        <div>实际账号/Page：尚未核验；自动发布：尚未验证</div>
+        ${{(check.tabs || []).map((tab) => `<div>标签页 ${{tab.tab_index}}：${{esc(tab.url)}}</div>`).join('')}}
+        ${{task.entry_check_url ? `<a href="${{esc(task.entry_check_url)}}" target="_blank" rel="noopener">查看检查记录</a>` : ''}}
+        ${{check.message ? `<div>${{esc(check.message)}}</div>` : ''}}
+      </div>`;
     }}
 
     async function pollPreparation() {{
@@ -991,6 +1093,8 @@ def render_page(title: str = "RPA 确认工作台") -> str:
 
     function renderTasks() {{
       const rows = visibleTasks();
+      const expanded = new Set([...tasksEl.querySelectorAll('article[data-id]')]
+        .filter((article) => article.querySelector('details[open]')).map((article) => article.dataset.id));
       document.querySelector('#listHint').textContent = `当前显示 ${{rows.length}} / ${{state.tasks.length}} 条`;
       if (!rows.length) {{
         tasksEl.innerHTML = '<div class="empty-shot">没有匹配任务</div>';
@@ -1043,7 +1147,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                 <button class="soft" data-action="ready" data-id="${{publishId}}">加入重试队列</button>
                 <button class="danger" data-action="reject" data-id="${{publishId}}">不发布</button>
               </div>
-              <details class="task-details">
+              <details class="task-details" ${{expanded.has(task.publish_id) ? 'open' : ''}}>
                 <summary>展开详情 / 回填 / 账号健康</summary>
                 <div class="paths">
                   <div>窗口：${{esc(task.profile_name)}} / 窗口ID：${{esc(task.profile_id)}}</div>
@@ -1060,6 +1164,10 @@ def render_page(title: str = "RPA 确认工作台") -> str:
                   <div>扫描：${{esc(task.scanned_tab_count || '')}} 页签 / ${{esc(task.scanner_error_count || '')}} 错误</div>
                   <div>${{esc(task.scanner_errors || '')}}</div>
                 </div>
+                <div class="actions" style="margin-top:8px">
+                  <button class="soft" data-action="inspect" data-id="${{publishId}}">检查发布入口</button>
+                </div>
+                ${{entryCheckHtml(task)}}
                 <div class="forms">
                   <section>
                     <div class="form-grid">
@@ -1199,6 +1307,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       state.platforms = data.platforms || {{}};
       state.sources = data.sources || {{}};
       state.preparation = data.preparation || {{}};
+      state.inspection = data.inspection || {{}};
       const sync = data.delivery_sync || {{}};
       const syncPanel = document.querySelector('#deliverySync');
       syncPanel.hidden = sync.added === undefined;
@@ -1208,6 +1317,7 @@ def render_page(title: str = "RPA 确认工作台") -> str:
       renderTasks();
       renderPreparation();
       schedulePreparationPoll();
+      renderInspection();
     }}
 
     document.addEventListener('click', async (event) => {{
@@ -1222,6 +1332,23 @@ def render_page(title: str = "RPA 确认工作台") -> str:
         }}
         if (button.dataset.action === 'backfill') await submitBackfill(id);
         if (button.dataset.action === 'detect') await detectPostUrl(id);
+        if (button.dataset.action === 'inspect') {{
+          if (preparationBusy()) return;
+          if (value(id, 'account_key') !== (state.tasks.find((task) => task.publish_id === id) || {{}}).account_key) {{
+            toast('请先保存目标账号分配', true); return;
+          }}
+          state.inspection = {{ running: true, publish_id: id, message: '正在启动入口检查…' }};
+          renderInspection(); renderPreparation();
+          try {{
+            state.inspection = await api('/api/inspect-entry', {{ method: 'POST', body: JSON.stringify({{ publish_id: id }}) }});
+          }} catch (error) {{
+            try {{ state.inspection = await api('/api/entry-status'); }}
+            catch (_) {{ state.inspection = {{ running: true, publish_id: id, message: '连接中断，正在确认入口检查状态' }}; }}
+            toast(error.message || String(error), true);
+          }}
+          renderInspection(); renderPreparation();
+          if (!state.inspection.running) await load();
+        }}
         if (button.dataset.action === 'ready') await submitBackfill(id, 'READY');
         if (button.dataset.action === 'reject') await submitBackfill(id, 'REJECTED_MANUAL');
         if (button.dataset.action === 'health') await submitHealth(id);
@@ -1348,6 +1475,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/prepare-status":
                 json_response(self, self.state.preparation_status())
                 return
+            if parsed.path == "/api/entry-status":
+                json_response(self, self.state.inspection_status())
+                return
             if parsed.path == "/artifact":
                 params = parse_qs(parsed.query)
                 artifact = self.state.resolve_artifact(params.get("path", [""])[0])
@@ -1381,6 +1511,9 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/refresh-delivery":
                 json_response(self, self.state.refresh_delivery())
+                return
+            if parsed.path == "/api/inspect-entry":
+                json_response(self, self.state.inspect_entry(body))
                 return
             if parsed.path == "/api/assign-account":
                 json_response(self, self.state.assign_account(body))

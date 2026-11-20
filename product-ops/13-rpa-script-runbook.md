@@ -181,13 +181,23 @@ python .\scripts\publishing\dopa_matrix_publisher.py
 
 CSV 统一通过结构校验读取：支持正确引用的逗号、双引号、换行和行尾多余空列；多出的非空列、重复表头、无列名内容或引号错误会显示文件路径和行号，不静默拼接或丢失内容。新建计划时启动器也会预先验证文案表和台账。
 
+### 检查发布入口
+
+在任务详情中点击“检查发布入口”，后台连接任务已保存的比特窗口，读取当前已打开的 TK 或 FB 页面。检查不会导航、上传、填写或点击平台控件；若窗口关闭，BitBrowser 打开它时可能恢复自己的默认/历史标签页。没有对应平台的编辑页时，先人工打开再检查。
+
+工作台显示后台检查进度，刷新网页可以继续等待；检查期间禁用重复检查、草稿准备和修改操作，结束后恢复。结果显示“发现入口，未验证”“当前禁用”或“未发现（不代表不支持）”；同窗口多个发布页或 Page 候选提示人工核对。身份与实际自动发布均保持未核验，不能把入口存在当作排期成功或账号正确。
+
+结果独立保存到计划目录的 `entry_checks/`（新包为 `rpa_work/entry_checks/`），不改计划状态、链接或发布日志。任务详情可查看原始检查记录；账号/窗口/内容类型/发布入口变更后不复用旧结果。连接失败会保存失败记录，并释放按钮。
+
+开发人员可运行 `python .\scripts\publishing\rpa_entry_check.py --profile-id <指定窗口ID> --output-dir <本地诊断目录>` 只读检查；`--capture-pages` 额外保存本地发布页截图与控件线索，`--open-entries` 会在指定窗口新开空白 TK 上传页及唯一 Page 候选的 FB 编辑页，不上传或提交。普通运营使用工作台按钮即可。
+
 ### 跑本地回归
 
 ```powershell
 python .\scripts\publishing\rpa_selftest.py
 ```
 
-另可运行 `python .\scripts\publishing\rpa_workbench_ui_selftest.py`，使用临时台账和模拟发布器验证启动器保存后的检查刷新、网页分配保存、准备进度、刷新恢复、页面打开后追加投放行/素材、重复刷新去重、缺文件提示和移动布局。需要开发机具备 Playwright Chromium；不连接真实平台或上传素材。测试截图放在 `scripts/publishing/build/workbench-ui-check/`。
+另可运行 `python .\scripts\publishing\rpa_workbench_ui_selftest.py`，使用临时台账和模拟发布器验证启动器检查、账号保存、准备进度、投放表更新、入口检查/失败恢复/持久化和移动布局，并用本地 HTML 验证隐藏控件过滤、中文定时开关及只读采集。需要开发机具备 Playwright Chromium；不连接真实平台或上传素材。测试截图放在 `scripts/publishing/build/workbench-ui-check/`。
 
 ## 常用参数
 

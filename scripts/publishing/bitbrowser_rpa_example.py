@@ -2536,7 +2536,7 @@ def generate_publish_plan(args: argparse.Namespace) -> int:
     return 0
 
 
-def connect_browser_context(cdp_url: str):
+def connect_browser_context(cdp_url: str, timeout_ms: int = 30_000, allow_new_context: bool = True):
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -2546,7 +2546,14 @@ def connect_browser_context(cdp_url: str):
         ) from exc
 
     pw = sync_playwright().start()
-    browser = pw.chromium.connect_over_cdp(cdp_url)
+    try:
+        browser = pw.chromium.connect_over_cdp(cdp_url, timeout=timeout_ms)
+    except Exception:
+        pw.stop()
+        raise
+    if not browser.contexts and not allow_new_context:
+        pw.stop()
+        raise BitBrowserError("Browser has no existing context to inspect.")
     context = browser.contexts[0] if browser.contexts else browser.new_context()
     return pw, browser, context
 

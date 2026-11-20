@@ -6,7 +6,8 @@ import tempfile
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from playwright.sync_api import sync_playwright
 
@@ -14,6 +15,7 @@ from bitbrowser_rpa_example import DEFAULT_ACCOUNT_LEDGER_FILENAME, update_publi
 from dopa_matrix_publisher import LedgerEditorWindow, PublisherLauncher
 from rpa_operator_console_selftest import write_csv
 from rpa_workbench_server import WorkbenchConfig, WorkbenchHandler, WorkbenchState
+from rpa_entry_check import CONTROL_SNAPSHOT_JS, classify_page
 
 
 def main() -> int:
@@ -77,6 +79,7 @@ def main() -> int:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         released = threading.Event()
+        inspection_released = threading.Event()
         calls = []
 
         def fake_publisher(argv, progress_callback=None):
@@ -87,9 +90,31 @@ def main() -> int:
             update_publish_plan_row(plan, "T1", {"status": "PREPARED"})
             return 0
 
+        def fake_inspect(context, platform):
+            if not inspection_released.wait(20):
+                raise RuntimeError("Entry inspection UI test release timed out")
+            return {"status": "ENTRY_OBSERVED", "checked_at": "2026-11-20T15:00:00+08:00", "tabs": [],
+                    "identity_verified": False, "automation_verified": False,
+                    "capabilities": {"schedule": "OBSERVED", "cover": "NOT_OBSERVED"}}
+
         try:
             with patch("rpa_workbench_server.publisher_main", fake_publisher), sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
+                fixture = browser.new_page()
+                fixture.set_content('''<button disabled>Post</button><button style="display:none">Edit cover</button>
+                    <input type="checkbox" role="switch" aria-label="设置日期和时间">
+                    <input type="file" hidden><input type="text" role="spinbutton" aria-label="小时">
+                    <script>window.actions = 0; document.addEventListener('click', () => window.actions++);</script>''')
+                controls = fixture.locator('html').evaluate(CONTROL_SNAPSHOT_JS)
+                observed = classify_page('https://business.facebook.com/latest/composer', controls, 1)
+                assert observed['capabilities']['schedule']['state'] == 'OBSERVED'
+                assert observed['capabilities']['submit']['state'] == 'OBSERVED_DISABLED'
+                assert observed['capabilities']['cover']['state'] == 'NOT_OBSERVED'
+                assert observed['capabilities']['upload']['state'] == 'OBSERVED'
+                assert any(control.get('role') == 'spinbutton' for control in controls['controls'])
+                assert fixture.evaluate('window.actions') == 0
+                assert not fixture.get_by_role('switch').is_checked()
+                fixture.close()
                 page = browser.new_page(viewport={"width": 1280, "height": 800})
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
@@ -140,6 +165,35 @@ def main() -> int:
                 page.locator('#reload').click()
                 page.locator('#deliverySync').get_by_text('未新增任务，缺少素材文件：missing.mp4', exact=False).wait_for()
                 page.screenshot(path=str(screenshot_dir / "delivery-refresh.png"), full_page=True)
+                fake_client = Mock()
+                fake_client.open_profile.return_value = SimpleNamespace(cdp_url='ws://fixture')
+                with patch('rpa_workbench_server.BitBrowserClient', return_value=fake_client), \
+                     patch('rpa_workbench_server.connect_browser_context', return_value=(Mock(), Mock(), object())), \
+                     patch('rpa_workbench_server.inspect_context', side_effect=fake_inspect):
+                    page.locator('article[data-id="T1"] summary').click()
+                    page.locator('[data-action="inspect"][data-id="T1"]').click()
+                    page.wait_for_function("document.querySelector('#inspection').textContent.includes('正在读取')")
+                    assert page.locator('#prepareSelected').is_disabled()
+                    assert page.locator('[data-action="inspect"][data-id="T1"]').is_disabled()
+                    page.reload()
+                    page.wait_for_function("document.querySelector('#inspection').textContent.includes('正在读取')")
+                    page.locator('article[data-id="T1"] summary').click()
+                    inspection_released.set()
+                    page.locator('[data-entry-result="T1"]').wait_for()
+                    assert '定时：发现入口，未验证' in page.locator('[data-entry-result="T1"]').inner_text()
+                    assert page.locator('article[data-id="T1"] details').get_attribute('open') is not None
+                    assert state.find_task('T1')['status'] == 'PREPARED'
+                    fake_client.open_profile.assert_called_once_with('profile-2')
+                report_link = page.locator('[data-entry-result="T1"] a').get_attribute('href')
+                assert page.request.get(base_url + report_link).status == 200
+                page.reload()
+                page.locator('article[data-id="T1"] summary').click()
+                page.locator('[data-entry-result="T1"]').wait_for()
+                page.screenshot(path=str(screenshot_dir / 'entry-check.png'), full_page=True)
+                with patch('rpa_workbench_server.BitBrowserClient', side_effect=RuntimeError('offline')):
+                    page.locator('[data-action="inspect"][data-id="T1"]').click()
+                    page.wait_for_function("document.querySelector('[data-entry-result=\"T1\"]').textContent.includes('入口检查失败')")
+                    assert page.locator('#prepareSelected').is_enabled()
                 page.set_viewport_size({"width": 390, "height": 844})
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "mobile horizontal overflow"
                 page.screenshot(path=str(screenshot_dir / "mobile.png"), full_page=True)
@@ -148,12 +202,15 @@ def main() -> int:
                 browser.close()
         finally:
             released.set()
+            inspection_released.set()
             if hasattr(state, "_prepare_thread"):
                 state._prepare_thread.join(5)
+            if hasattr(state, "_inspection_thread"):
+                state._inspection_thread.join(5)
             server.shutdown()
             server.server_close()
             thread.join(5)
-    print("PASS browser account assignment, progress, delivery refresh, duplicate protection and mobile layout")
+    print("PASS browser account assignment, progress, delivery refresh, entry checks, duplicate protection and mobile layout")
     print(f"Screenshots: {screenshot_dir}")
     return 0
 

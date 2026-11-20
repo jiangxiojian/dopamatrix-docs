@@ -11,6 +11,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import rpa_customer_report_page_selftest  # noqa: E402
 import rpa_csv_selftest  # noqa: E402
+import rpa_entry_check_selftest  # noqa: E402
 import rpa_ledger_sync_selftest  # noqa: E402
 import rpa_operator_console_selftest  # noqa: E402
 import rpa_stability_selftest  # noqa: E402
@@ -35,6 +36,9 @@ def main() -> int:
     print()
     print("Running popup and error stability self-test...")
     rpa_stability_selftest.main()
+    print()
+    print("Running entry inspection self-test...")
+    rpa_entry_check_selftest.main()
     print()
     print("RPA local self-tests passed.")
     return 0

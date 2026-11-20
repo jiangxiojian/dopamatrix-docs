@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-08-19
+> 更新时间：2026-11-20
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -484,6 +484,7 @@ python docs/scripts/publishing/rpa_selftest.py
 
 | 问题 | 结果记录 |
 | --- | --- |
+| 2026-11-20 自动发布 A0 入口观察 | 用户指定 001（`82b4fd0926b9469f830c6c4e2dc4e589`），002 未操作。TK Studio 上传入口已观察，未上传、未处理未保存草稿；FB Bright Auto Picks 空白编辑页已展开“设置日期和时间”，确认日期文本框和小时/分钟 spinbutton，随后恢复关闭。未填写/提交排期或发布；封面、时区、限制及排期回执未验证。诊断截图位于开发构建目录 `scripts/publishing/build/entry-check-001/`。 |
 | `POST /health` 是否可用 | 本机已验证，返回 `success=true` |
 | `/browser/open` 返回的是 `http`、`ws` 还是其他字段 | 已用真实 TK 测试窗口验证返回 `ws` |
 | 返回的 CDP 地址能否被 Playwright `connect_over_cdp` 连接 | 已验证 |
