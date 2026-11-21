@@ -17,9 +17,13 @@ import rpa_ledger_sync_selftest  # noqa: E402
 import rpa_operator_console_selftest  # noqa: E402
 import rpa_stability_selftest  # noqa: E402
 import rpa_url_detection_selftest  # noqa: E402
+import rpa_tiktok_upload_selftest  # noqa: E402
 
 
 def main() -> int:
+    print("Running TikTok upload entry self-test...")
+    rpa_tiktok_upload_selftest.main()
+    print()
     print("Running CSV regression self-test...")
     rpa_csv_selftest.main()
     print()

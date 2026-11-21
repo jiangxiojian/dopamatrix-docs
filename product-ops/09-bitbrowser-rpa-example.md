@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-11-20
+> 更新时间：2026-11-21
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -482,8 +482,21 @@ python docs/scripts/publishing/rpa_selftest.py
 
 ## 需要实机验证的问题
 
+### TikTok 视频上传入口兼容
+
+2026-11-21 根据用户反馈更新源码，优先使用 Studio 视频入口，普通运营无需填写参数：
+
+1. `https://www.tiktok.com/tiktokstudio/upload?from=webapp&tab=video`
+2. `https://www.tiktok.com/tiktokstudio/upload?from=creator_center&tab=video`
+3. `https://www.tiktok.com/upload?lang=en`（旧入口兜底）
+
+仅在上传前切换入口，以页面中唯一、启用且接受视频的 file input 为就绪条件，保留 `from` 和 `tab=video`；图片输入框不作为视频上传目标。登录/验证/访问限制或多输入框歧义直接停止；代理连接错误不通过换入口重试。开始附加视频后，无论成功还是超时都不切换入口，避免覆盖正在上传的内容。已有已附加文件的任务页不重新导航。
+
+主发布器和开发诊断 `rpa_entry_check.py --open-entries` 共用相同逻辑。成功结果保留 `upload_entry` 尝试记录，入口失败写入明确错误码及 `plan.upload_entry_attempts`，方便区分入口失效与文件上传失败。本轮仅本地拦截页面验证，未连接真实平台；BitBrowser Local API 当时未启动，001 实机验证待补。未打包 EXE。
+
 | 问题 | 结果记录 |
 | --- | --- |
+| 2026-11-21 TK Studio 两种来源入口 | 源码支持 `from=webapp`、`from=creator_center` 且 `tab=video`，旧入口保留兜底；本地浏览器验证首次成功、第二入口/旧入口回退、延迟挂载、图片控件排除、上传后不导航及登录/验证拦截。真实账号上的新一轮验证待补；002 未操作。 |
 | 2026-11-20 自动发布 A0 入口观察 | 用户指定 001（`82b4fd0926b9469f830c6c4e2dc4e589`），002 未操作。TK Studio 上传入口已观察，未上传、未处理未保存草稿；FB Bright Auto Picks 空白编辑页已展开“设置日期和时间”，确认日期文本框和小时/分钟 spinbutton，随后恢复关闭。未填写/提交排期或发布；封面、时区、限制及排期回执未验证。诊断截图位于开发构建目录 `scripts/publishing/build/entry-check-001/`。 |
 | `POST /health` 是否可用 | 本机已验证，返回 `success=true` |
 | `/browser/open` 返回的是 `http`、`ws` 还是其他字段 | 已用真实 TK 测试窗口验证返回 `ws` |

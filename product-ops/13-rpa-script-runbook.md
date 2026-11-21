@@ -1,6 +1,6 @@
 # RPA 脚本操作手册
 
-> 更新时间：2026-11-20
+> 更新时间：2026-11-21
 > 文档类型：使用说明  
 > 状态：实施中
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_ledger_sync_selftest.py](../scripts/publishing/rpa_ledger_sync_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
@@ -165,6 +165,10 @@ python .\scripts\publishing\dopa_matrix_publisher.py
 
 图形入口会选择投放包、自动生成 `rpa_work/publish_plan.csv`，并打开确认工作台。工作台中的“准备选中草稿”会调用已有发布器，默认新开任务 Tab、使用 Facebook `auto` 上传策略、写日志和回写状态，仍停在最终发布按钮前。
 
+TK 上传入口在源码中兼容三种地址：优先 `https://www.tiktok.com/tiktokstudio/upload?from=webapp&tab=video`，未找到可用视频控件时尝试 `https://www.tiktok.com/tiktokstudio/upload?from=creator_center&tab=video`，再尝试旧 `/upload?lang=en`。普通运营无需配置，已有任务标签页和其他平台页面不被复用覆盖。该更新尚待统一打包 EXE。
+
+切换只发生在视频附加前；页面出现登录、验证、访问限制、已有附加文件或多个视频输入框时停止，不盲点 Upload。视频控件明确且可用才附加素材，图片输入框被排除。上传超时不会再刷新去另一个入口，也不继续填写文案。错误 `TIKTOK_UPLOAD_ENTRY_UNAVAILABLE` 表示入口控件未找到，日志记录尝试过的地址与状态；它不同于文件上传过程中失败。此兼容逻辑已通过本地拦截页面测试，001 真实账号上的新一轮验证待补。
+
 选择投放包后，可在“同步台账”窗口同步、补齐并保存账号资料。只有“保存到投放包”才会写入 CSV；保存后启动器自动刷新检查结果。同一个比特窗口支持分别维护 TK、FB 两行台账，窗口 ID 可以相同，平台和账号键需明确。
 
 每条任务现在直接显示“目标账号”和“对应窗口”。账号下拉框只列出资料完整、账号键唯一的同平台记录；修改后点击“保存分配”，更新原计划表的账号键、窗口 ID 和名称。准备前必须先保存，窗口与台账不一致会阻止执行。生成计划仍沿用原有默认账号规则，没有新增按容量或排期智能分配。
@@ -212,6 +216,8 @@ python .\scripts\publishing\rpa_selftest.py
 ```
 
 另可运行 `python .\scripts\publishing\rpa_workbench_ui_selftest.py`，使用临时台账和模拟发布器验证启动器、账号、进度、投放表、入口检查，以及封面导入/预览、时间预设、批次确认/刷新恢复/失效和移动布局。需要开发机具备 Playwright Chromium；不连接真实平台或上传素材。测试截图放在 `scripts/publishing/build/workbench-ui-check/`。新增加的图片/时区依赖已写入 `requirements.txt`。
+
+TK 入口回归已接入以上两组自测：离线模拟尝试顺序、错误分类及上传后不切换；本地浏览器拦截所有请求，覆盖 `webapp`/`creator_center`/旧入口、延迟视频控件、图片/禁用控件排除及已有文件保护，不向真实 TK 上传。
 
 ## 常用参数
 

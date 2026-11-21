@@ -17,6 +17,7 @@ from rpa_operator_console_selftest import write_csv
 from rpa_workbench_server import WorkbenchConfig, WorkbenchHandler, WorkbenchState
 from rpa_entry_check import CONTROL_SNAPSHOT_JS, classify_page
 import rpa_publish_options_ui_selftest
+import rpa_tiktok_upload_selftest
 
 
 def main() -> int:
@@ -101,6 +102,7 @@ def main() -> int:
         try:
             with patch("rpa_workbench_server.publisher_main", fake_publisher), sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
+                rpa_tiktok_upload_selftest.run_browser_checks(browser)
                 fixture = browser.new_page()
                 fixture.set_content('''<button disabled>Post</button><button style="display:none">Edit cover</button>
                     <input type="checkbox" role="switch" aria-label="设置日期和时间">

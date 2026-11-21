@@ -184,8 +184,9 @@ def main() -> int:
     parser.add_argument("--capture-pages", action="store_true", help="Save local screenshots and visible control labels for composer diagnostics")
     args = parser.parse_args()
     from bitbrowser_rpa_example import (
-        DEFAULT_FACEBOOK_COMPOSER_URL, DEFAULT_TIKTOK_UPLOAD_URL, BitBrowserClient, configure_utf8_stdio, connect_browser_context,
+        DEFAULT_FACEBOOK_COMPOSER_URL, BitBrowserClient, configure_utf8_stdio, connect_browser_context,
     )
+    from rpa_tiktok_upload import open_tiktok_video_upload
 
     configure_utf8_stdio()
     client = BitBrowserClient(args.bit_api, timeout=8)
@@ -200,7 +201,9 @@ def main() -> int:
                     candidate = (parse_qs(urlsplit(tab.url).query).get("asset_id") or [""])[0]
                     if candidate.isdigit():
                         page_ids.add(candidate)
-            targets = [DEFAULT_TIKTOK_UPLOAD_URL]
+            page = context.new_page()
+            open_tiktok_video_upload(page)
+            targets = []
             if len(page_ids) == 1:
                 targets.append(DEFAULT_FACEBOOK_COMPOSER_URL + "?asset_id=" + next(iter(page_ids)))
             else:

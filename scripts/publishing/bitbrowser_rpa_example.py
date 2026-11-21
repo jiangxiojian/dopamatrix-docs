@@ -58,10 +58,12 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 import requests
 
 from rpa_csv import CSVFormatError, read_csv_rows, read_csv_table
+from rpa_tiktok_upload import (
+    DEFAULT_TIKTOK_UPLOAD_URL, TikTokUploadEntryError, attach_tiktok_video, open_tiktok_video_upload,
+)
 
 
 DEFAULT_BIT_API = "http://127.0.0.1:54345"
-DEFAULT_TIKTOK_UPLOAD_URL = "https://www.tiktok.com/upload?lang=en"
 DEFAULT_FACEBOOK_COMPOSER_URL = "https://business.facebook.com/latest/composer"
 DEFAULT_UPLOAD_WAIT_MS = 60_000
 DEFAULT_WORK_DIRNAME = "rpa_work"
@@ -2922,20 +2924,12 @@ def publish_tiktok(
     content_check_action: str = "pause",
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    if progress:
-        progress("正在打开 TikTok 上传页")
-    page.goto(DEFAULT_TIKTOK_UPLOAD_URL, wait_until="domcontentloaded", timeout=60_000)
-    page.wait_for_timeout(3000)
+    entry = open_tiktok_video_upload(page, ready_timeout_ms=min(upload_wait_ms, 15_000), progress=progress)
 
     if progress:
         progress("正在上传 TikTok 视频并等待页面处理")
-    uploaded = set_first_file_input(page, media_path, upload_wait_ms)
-    clicked_upload_entry = False
-    if not uploaded:
-        clicked_upload_entry = click_upload_entry_best_effort(page)
-        if clicked_upload_entry:
-            page.wait_for_timeout(3000)
-            uploaded = set_first_file_input(page, media_path, upload_wait_ms)
+    attach_tiktok_video(page, media_path, entry, upload_wait_ms)
+    uploaded = True
     if uploaded:
         page.wait_for_timeout(8000)
 
@@ -2949,7 +2943,8 @@ def publish_tiktok(
         "url": page.url,
         "uploaded": uploaded,
         "caption_filled": caption_filled,
-        "clicked_upload_entry": clicked_upload_entry,
+        "clicked_upload_entry": False,
+        "upload_entry": entry,
         "content_check": content_check,
         "dismissed_popups": dismissed_popups,
         "checkpoint": "请人工检查视频、caption、版权/商业内容声明，然后手动点击发布。",
@@ -3114,6 +3109,8 @@ def plan_work_screenshot_path(plan_dir: Path, platform: str, publish_id: str = "
 
 
 def classify_error(error_type: str, error_message: str, platform: str = "") -> str:
+    if error_type == "TikTokUploadEntryError":
+        return error_message.split(":", 1)[0]
     if error_type == "CSVFormatError":
         return "PLAN_CONFIG_INVALID"
     haystack = f"{error_type} {error_message}".lower()
@@ -3216,6 +3213,8 @@ def recommend_error_action(error_type: str, status: str = "") -> str:
         "TIKTOK_POST_URL_NOT_PUBLIC",
         "FACEBOOK_FILE_CHOOSER_TIMEOUT",
         "TIKTOK_UPLOAD_NOT_CONFIRMED",
+        "TIKTOK_UPLOAD_ENTRY_UNAVAILABLE",
+        "TIKTOK_UPLOAD_ENTRY_CHANGED",
         "FACEBOOK_UPLOAD_NOT_CONFIRMED",
         "UPLOAD_NOT_CONFIRMED",
         "FACEBOOK_MEDIA_PROCESSING_NOT_CONFIRMED",
@@ -3607,6 +3606,8 @@ def run_single(args: argparse.Namespace) -> dict[str, Any]:
 
         return log_payload
     except Exception as exc:
+        if isinstance(exc, TikTokUploadEntryError):
+            plan["upload_entry_attempts"] = exc.attempts
         failure_payload = write_failure_logs(
             args,
             plan,
@@ -4506,7 +4507,7 @@ def main(argv: list[str], progress_callback: Callable[[dict[str, Any]], None] | 
         if args.one_click or not argv:
             args = configure_one_click(args)
         return run(args)
-    except (BitBrowserError, CSVFormatError, requests.RequestException) as exc:
+    except (BitBrowserError, TikTokUploadEntryError, CSVFormatError, requests.RequestException) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
