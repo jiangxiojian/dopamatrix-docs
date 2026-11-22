@@ -14,7 +14,7 @@ if errorlevel 1 (
 if not exist build mkdir build
 if not exist dist mkdir dist
 
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name DopaMatrixPublisher --collect-all playwright --hidden-import requests dopa_matrix_publisher.py
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name DopaMatrixPublisher --collect-all playwright --collect-all tzdata --hidden-import requests dopa_matrix_publisher.py
 
 set "exit_code=%ERRORLEVEL%"
 echo.

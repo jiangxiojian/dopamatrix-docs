@@ -1,6 +1,6 @@
 # 比特浏览器 RPA 示例说明
 
-> 更新时间：2026-11-21
+> 更新时间：2026-11-22
 > 文档类型：技术示例  
 > 状态：草案  
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py)
@@ -492,7 +492,7 @@ python docs/scripts/publishing/rpa_selftest.py
 
 仅在上传前切换入口，以页面中唯一、启用且接受视频的 file input 为就绪条件，保留 `from` 和 `tab=video`；图片输入框不作为视频上传目标。登录/验证/访问限制或多输入框歧义直接停止；代理连接错误不通过换入口重试。开始附加视频后，无论成功还是超时都不切换入口，避免覆盖正在上传的内容。已有已附加文件的任务页不重新导航。
 
-主发布器和开发诊断 `rpa_entry_check.py --open-entries` 共用相同逻辑。成功结果保留 `upload_entry` 尝试记录，入口失败写入明确错误码及 `plan.upload_entry_attempts`，方便区分入口失效与文件上传失败。本轮仅本地拦截页面验证，未连接真实平台；BitBrowser Local API 当时未启动，001 实机验证待补。未打包 EXE。
+主发布器和开发诊断 `rpa_entry_check.py --open-entries` 共用相同逻辑。成功结果保留 `upload_entry` 尝试记录，入口失败写入明确错误码及 `plan.upload_entry_attempts`，方便区分入口失效与文件上传失败。兼容逻辑已完成本地拦截页面验证，未连接真实平台；BitBrowser Local API 当时未启动，001 实机验证待补。2026-11-22 已纳入 EXE 打包。
 
 | 问题 | 结果记录 |
 | --- | --- |

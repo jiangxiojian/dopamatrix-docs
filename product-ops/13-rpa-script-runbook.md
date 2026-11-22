@@ -1,6 +1,6 @@
 # RPA 脚本操作手册
 
-> 更新时间：2026-11-21
+> 更新时间：2026-11-22
 > 文档类型：使用说明  
 > 状态：实施中
 > 相关脚本：[bitbrowser_rpa_example.py](../scripts/publishing/bitbrowser_rpa_example.py) 、[rpa_selftest.py](../scripts/publishing/rpa_selftest.py) 、[rpa_ledger_sync_selftest.py](../scripts/publishing/rpa_ledger_sync_selftest.py) 、[rpa_operator_console.py](../scripts/publishing/rpa_operator_console.py) 、[rpa_workbench_server.py](../scripts/publishing/rpa_workbench_server.py)
@@ -165,7 +165,7 @@ python .\scripts\publishing\dopa_matrix_publisher.py
 
 图形入口会选择投放包、自动生成 `rpa_work/publish_plan.csv`，并打开确认工作台。工作台中的“准备选中草稿”会调用已有发布器，默认新开任务 Tab、使用 Facebook `auto` 上传策略、写日志和回写状态，仍停在最终发布按钮前。
 
-TK 上传入口在源码中兼容三种地址：优先 `https://www.tiktok.com/tiktokstudio/upload?from=webapp&tab=video`，未找到可用视频控件时尝试 `https://www.tiktok.com/tiktokstudio/upload?from=creator_center&tab=video`，再尝试旧 `/upload?lang=en`。普通运营无需配置，已有任务标签页和其他平台页面不被复用覆盖。该更新尚待统一打包 EXE。
+TK 上传入口兼容三种地址：优先 `https://www.tiktok.com/tiktokstudio/upload?from=webapp&tab=video`，未找到可用视频控件时尝试 `https://www.tiktok.com/tiktokstudio/upload?from=creator_center&tab=video`，再尝试旧 `/upload?lang=en`。普通运营无需配置，已有任务标签页和其他平台页面不被复用覆盖。2026-11-22 打包版已包含该更新。
 
 切换只发生在视频附加前；页面出现登录、验证、访问限制、已有附加文件或多个视频输入框时停止，不盲点 Upload。视频控件明确且可用才附加素材，图片输入框被排除。上传超时不会再刷新去另一个入口，也不继续填写文案。错误 `TIKTOK_UPLOAD_ENTRY_UNAVAILABLE` 表示入口控件未找到，日志记录尝试过的地址与状态；它不同于文件上传过程中失败。此兼容逻辑已通过本地拦截页面测试，001 真实账号上的新一轮验证待补。
 
@@ -197,7 +197,7 @@ CSV 统一通过结构校验读取：支持正确引用的逗号、双引号、�
 
 ### 发布预设、封面与内容确认
 
-本组能力已在源码实现，本轮未重新打包 EXE。任务详情新增“发布设置与封面”，可保存人工模式、自动立即发布预设或平台定时预设，以及可见范围、商业/AI 内容声明。日期按选定的时区解释，保存后显示 UTC，过去时间和夏令时跳时/重复时段会被拦截。
+2026-11-22 打包版已包含本组能力。任务详情新增“发布设置与封面”，可保存人工模式、自动立即发布预设或平台定时预设，以及可见范围、商业/AI 内容声明。日期按选定的时区解释，保存后显示 UTC，过去时间和夏令时跳时/重复时段会被拦截。
 
 这些设置当前仅为预设：不会应用到 TK/FB，也不会启动定时器。准备草稿仍只上传素材并填写文案，封面、声明、时间和最终发布需人工在平台操作；保存时间不表示已排期，报表不会因此增加发布数量。
 
